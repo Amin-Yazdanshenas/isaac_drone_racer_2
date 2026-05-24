@@ -74,13 +74,14 @@ def progress(
     env: ManagerBasedRLEnv,
     command_name: str,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    asymmetric: bool = False,
 ) -> torch.Tensor:
-    """Asymmetric progress reward: only reward forward progress, no penalty for retreating.
+    """Progress toward target gate (prev_distance - current_distance).
 
-    Symmetric `prev_dist - cur_dist` is double-edged — random initial direction means 50% of
-    the time the drone is punished for moving, expected gradient ~0, policy converges to
-    "hover and don't crash" local optimum. Clamping to >=0 makes the signal one-sided so even
-    noisy exploration learns to move toward the gate.
+    asymmetric=False (default): signed — PPO needs negative gradient on retreat so the
+    policy commits to moving toward the gate. Matches upstream PPO behavior.
+    asymmetric=True: clamp to >=0 (forward-only). Useful for under-trained policies
+    that need a one-sided signal to escape hover.
     """
     asset: RigidObject = env.scene[asset_cfg.name]
 
@@ -92,25 +93,23 @@ def progress(
     current_distance = torch.norm(current_pos - target_pos, dim=1)
 
     progress = prev_distance - current_distance
-    return progress.clamp(min=0.0)
+    if asymmetric:
+        progress = progress.clamp(min=0.0)
+    return progress
 
 
 def gate_passed(
     env: ManagerBasedRLEnv,
     command_name: str | None = None,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    penalize_miss: bool = True,
 ) -> torch.Tensor:
     """Reward for passing the current target gate, computed INLINE.
 
-    Isaac Lab calls reward_manager BEFORE command_manager (manager_based_rl_env.py:208 vs 232),
-    so reading cmd.gate_passed (filled by _update_command in command_manager.compute) at reward
-    time always returns the PREVIOUS step's stale value. Worse, env_wrapper zeroes the
-    accumulator before each step, so the +30 reward never reaches replay.
-
-    Workaround: compute the plane-crossing + bbox check inline using the same prev/current
-    positions as _update_command, but here it runs at the correct time (after physics, before
-    reward bookkeeping). prev_robot_pos_w is the snapshot saved at the END of the LAST
-    _update_command call → approximately the position at the START of this RL step.
+    penalize_miss=True (default): +1 pass / -1 plane-crossing-while-off-center. Upstream
+    PPO behavior — discourages clipping the gate frame.
+    penalize_miss=False: +1 pass only, no penalty for misses. Useful when the policy is
+    still learning to even reach the gate.
     """
     asset: RigidObject = env.scene[asset_cfg.name]
     cmd = env.command_manager.get_term(command_name)
@@ -134,12 +133,9 @@ def gate_passed(
     out_bbox = torch.any(abs_diff > half_size, dim=1)
 
     passed = crossing & in_bbox
-    # Asymmetric: only reward successful passes, do NOT penalize misses.
-    # Penalizing crossings-while-off-center makes the drone treat the gate area as dangerous
-    # (since missing is much more common than passing during early training), and the policy
-    # learns to AVOID gates entirely. Same philosophy as the asymmetric progress reward.
-    # Variable `out_bbox` no longer used here but kept above as a comment to document the logic.
-    _ = out_bbox  # silence linter
+    if penalize_miss:
+        missed = crossing & out_bbox & ~passed
+        return passed.float() - missed.float()
     return passed.float()
 
 

@@ -144,24 +144,23 @@ class EventCfg:
         },
     )
 
-    # intervals — push_robot disabled during early training: random forces destabilize the
-    # untrained policy, cascade crashes, and the resulting reset spikes stall the viewport.
-    # Re-enable for domain-randomization once the policy can fly stably.
-    # push_robot = EventTerm(
-    #     func=mdp.apply_external_force_torque,
-    #     mode="interval",
-    #     interval_range_s=(0.0, 0.2),
-    #     params={
-    #         "force_range": (-0.1, 0.1),
-    #         "torque_range": (-0.05, 0.05),
-    #     },
-    # )
+    # intervals — push_robot enabled for domain randomization (upstream PPO behavior).
+    push_robot = EventTerm(
+        func=mdp.apply_external_force_torque,
+        mode="interval",
+        interval_range_s=(0.0, 0.2),
+        params={
+            "force_range": (-0.1, 0.1),
+            "torque_range": (-0.05, 0.05),
+        },
+    )
 
 
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP."""
 
+    # Upstream PPO spawn: at prev gate +1 m forward, no lerp toward next gate, no velocity bias.
     target = mdp.GateTargetingCommandCfg(
         asset_name="robot",
         track_name="track",
@@ -169,33 +168,35 @@ class CommandsCfg:
         record_fpv=False,
         resampling_time_range=(1e9, 1e9),
         debug_vis=False,
+        spawn_lerp_alpha=0.0,
+        spawn_forward_offset=1.0,
+        spawn_forward_velocity=0.0,
     )
 
 
 @configclass
 class RewardsCfg:
-    """Reward terms for the MDP."""
+    """Reward terms for the MDP — upstream PPO weights.
 
-    # Early-training reward shaping:
-    # - terminating softened −4 → −2 so policy isn't afraid to move (less crash-aversion).
-    # - ang_vel_l2 disabled (was −0.001): tiny but adds noise; re-enable once policy is stable.
-    # - progress: asymmetric (only positive, see rewards.progress) × weight 100 (was 20).
-    #   At 2M env-steps the drone hovers post-gate-1 instead of chasing gate 2 — the post-gate
-    #   bootstrap value didn't exceed the cost-of-moving. Bumping progress 5× gives a stronger
-    #   one-sided shaping signal during the multi-gate-chain phase. Will dominate hover policy.
-    # - gate_passed boosted 10 → 30: when a gate IS passed, the reward dominates exploration so
-    #   the actor strongly prefers gate-passing behaviour over hovering near the spawn.
-    # - lookat_next kept small as a heading prior.
-    terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
-    ang_vel_l2 = RewTerm(func=mdp.ang_vel_l2, weight=0.0)
-    progress = RewTerm(func=mdp.progress, weight=100.0, params={"command_name": "target"})
-    # gate_passed weight 30 → 3000: Isaac Lab multiplies reward terms by dt (=0.01 s/step at
-    # decimation=4, sim_dt=1/400). With weight=30 the actual gate-pass spike was only 0.3 per
-    # step — much smaller than the cumulative progress reward over an episode (a drone slowly
-    # drifting toward the gate ends up earning more than one that actually passes through).
-    # Bumping to 3000 makes each gate event deliver a true +30 spike that dominates progress.
-    gate_passed = RewTerm(func=mdp.gate_passed, weight=3000.0, params={"command_name": "target"})
-    lookat_next = RewTerm(func=mdp.lookat_next_gate, weight=0.5, params={"command_name": "target", "std": 0.5})
+    These weights reproduce the convergence behavior of the upstream isaac_drone_racer
+    PPO baseline. terminating=-500 keeps a strong crash penalty, gate_passed=400 with
+    penalize_miss=True discourages frame-clipping, signed progress lets PPO push the
+    policy away from retreats.
+    """
+
+    terminating = RewTerm(func=mdp.is_terminated, weight=-500.0)
+    ang_vel_l2 = RewTerm(func=mdp.ang_vel_l2, weight=-0.0001)
+    progress = RewTerm(
+        func=mdp.progress,
+        weight=20.0,
+        params={"command_name": "target", "asymmetric": False},
+    )
+    gate_passed = RewTerm(
+        func=mdp.gate_passed,
+        weight=400.0,
+        params={"command_name": "target", "penalize_miss": True},
+    )
+    lookat_next = RewTerm(func=mdp.lookat_next_gate, weight=0.1, params={"command_name": "target", "std": 0.5})
 
 
 @configclass
@@ -203,9 +204,7 @@ class TerminationsCfg:
     """Termination terms for the MDP."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # flyaway distance bumped 20 → 50 m so a single overshoot doesn't immediately terminate.
-    # Cuts reset cascade rate during early training; re-tighten once policy is competent.
-    flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 50.0})
+    flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
     collision = DoneTerm(
         func=mdp.illegal_contact, params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 0.01}
     )
