@@ -188,7 +188,7 @@ class GateTargetingCommand(CommandTerm):
                 env=self._env,
                 env_ids=env_ids,
                 gate_pose=spawn_pose,
-                forward_offset=0.0,   # offset baked into lerp_pos already
+                forward_offset=self.cfg.spawn_forward_offset,
                 initial_lin_vel_world=init_vel,
                 # Tightened from ±0.5 m / ±45° to keep the spawn inside the next gate's z-bbox
                 # (half-size 0.75 m) and the drone near level so it doesn't diverge before the
@@ -332,7 +332,12 @@ class GateTargetingCommandCfg(CommandTermCfg):
     the gate — random rate noise then doesn't have to overcome zero translation from rest.
     Set to 0.0 to disable.
     """
-    """Size of the gate in meters. This is used to determine if the drone has passed through the gate."""
+
+    spawn_forward_offset: float = 0.0
+    """Extra offset (m) applied along prev_gate's forward axis on top of the lerp position.
+    Upstream PPO uses 1.0 (drone spawns 1 m ahead of prev gate). Set to 0.0 to spawn exactly
+    at the lerp position between prev and next gate.
+    """
 
     target_visualizer_cfg: VisualizationMarkersCfg = FRAME_MARKER_CFG.replace(prim_path="/Visuals/Command/goal_pose")
     """The configuration for the goal pose visualization marker. Defaults to FRAME_MARKER_CFG."""
