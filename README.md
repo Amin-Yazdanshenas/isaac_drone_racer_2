@@ -6,149 +6,136 @@
 
 [![IsaacSim](https://img.shields.io/badge/IsaacSim-5.1-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
 [![IsaacLab](https://img.shields.io/badge/IsaacLab-2.3.2-silver.svg)](https://isaac-sim.github.io/IsaacLab/)
-[![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://docs.python.org/3/whatsnew/3.10.html)
-[![pre-commit](https://img.shields.io/github/actions/workflow/status/isaac-sim/IsaacLab/pre-commit.yaml?logo=pre-commit&logoColor=white&label=pre-commit&color=brightgreen)](https://github.com/kousheekc/isaac_drone_racer/blob/master/.github/workflows/pre-commit.yaml)
+[![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://docs.python.org/3/whatsnew/3.11.html)
 [![License](https://img.shields.io/badge/license-BSD--3-yellow.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-**Isaac Drone Racer** is an open-source simulation framework for autonomous drone racing, developed on top of [IsaacLab](https://github.com/isaac-sim/IsaacLab). It is designed for training reinforcement learning policies in realistic racing environments, with a focus on accurate physics and modular design.
+**Isaac Drone Racer** is a simulation framework for autonomous drone racing built on [Isaac Lab](https://github.com/isaac-sim/IsaacLab). Trains skrl PPO policies in massively parallel simulation with accurate rotor dynamics, a tunable CTBR controller, and a programmable track generator.
 
-Autonomous drone racing is an active area of research. This project builds on insights from that body of work, combining them with massively parallel simulation to train racing policies within minutes — offering a fast and flexible platform for experimentation and benchmarking.
+Forked from [kousheekc/isaac_drone_racer](https://github.com/kousheekc/isaac_drone_racer) (Isaac Sim 4.5 / Isaac Lab v2.1) and ported to **Isaac Sim 5.1 / Isaac Lab 2.3.2 / Python 3.11**. The upstream Dreamer/MonoRace experimental branches have been removed; this repo focuses on the skrl PPO baselines.
 
-You can watch the related video here: [https://youtu.be/wLTYtpEUEEk](https://youtu.be/wLTYtpEUEEk)
+Demo video: [https://youtu.be/wLTYtpEUEEk](https://youtu.be/wLTYtpEUEEk)
+
+---
 
 ## Features
 
-Key highlights of the Isaac Drone Racer project:
+1. **Accurate physics modelling** — rotor first-order dynamics, aerodynamic drag, motor allocation matrix.
+2. **Two action interfaces** — direct motor ω (legacy) and CTBR (collective thrust + body rates) with a 400 Hz PD rate controller.
+3. **Manager-based env** — Isaac Lab [manager-based architecture](https://isaac-sim.github.io/IsaacLab/main/source/refs/reference_architecture/index.html#manager-based).
+4. **Onboard sensor suite** — pinhole FPV camera (64×64 semantic seg + RGB), IMU, contact sensor.
+5. **Track generator** — gate poses defined inline; semantic labels per-gate for perception tasks.
+6. **Asymmetric actor-critic** — actor sees only onboard sensors at deployment; critic sees privileged state during training.
+7. **Logger + plotter** — per-episode CSV logs, training metrics in TensorBoard.
 
-1. **Accurate Physics Modeling** — Simulates rotor dynamics, aerodynamic drag, and power consumption to closely match real-world quadrotor behavior.
-2. **Low-Level Flight Controller** — Built-in attitude and rate controllers.
-3. **Manager-Based Design** — Modular architecture using IsaacLab's [manager based architecture](https://isaac-sim.github.io/IsaacLab/main/source/refs/reference_architecture/index.html#manager-based).
-4. **Onboard Sensor Suite** — Includes simulated fisheye camera, IMU and collision detection.
-5. **Track Generator** — Dynamically generate custom race tracks.
-6. **Logger and Plotter** — Integrated tools for monitoring and visualizing flight behavior.
-7. **PPO via skrl** — asymmetric actor-critic with FPV camera + IMU policy and privileged ground-truth critic, plus a ground-truth-only variant for fast iteration.
-
-### Prerequisites
-- Workstation capable of running Isaac Sim (see [link](https://github.com/isaac-sim/IsaacSim?tab=readme-ov-file#prerequisites-and-environment-setup))
-- [Git](https://git-scm.com/downloads) & [Git LFS](https://git-lfs.com)
-- [Conda](https://www.anaconda.com/docs/getting-started/miniconda/install) for local installation or [Docker](https://docs.docker.com/engine/install/ubuntu/) with [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+---
 
 ## Requirements
-This project has been developed and tested with:
 
 - **Isaac Sim 5.1**
 - **Isaac Lab 2.3.2**
-- **Python 3.10**
+- **Python 3.11** (conda env `isaacsim`)
 - **Ubuntu 22.04 (x64)**
+- NVIDIA GPU. RTX 4090 (24 GB) reference; ≥ 8 GB VRAM for GUI, ≥ 6 GB headless.
+
+---
 
 ## Setup
 
 ### Option A — Restore the exact conda environment (recommended)
 
-An exported conda environment is provided in [environment.yml](environment.yml). This installs Isaac Sim 5.1, Isaac Lab 2.3.2, and all other pinned dependencies in one step, without needing to follow the upstream Isaac Lab installation guide manually.
-
 ```bash
-# 1. Clone this repository
 git clone https://github.com/Amin-Yazdanshenas/isaac_drone_racer.git
 cd isaac_drone_racer
 
-# 2. Create the conda environment from the lockfile (~10–20 min, downloads ~10 GB)
+# Create env from lockfile (10–20 min, ~10 GB)
 conda env create -f environment.yml
-
-# 3. Activate it
 conda activate isaacsim
 
-# 4. Install ALL local project modules in editable mode (required every fresh clone)
-#    This registers tasks/, utils/, and dynamics/ so Python can import them.
+# Register local packages (tasks/, utils/, dynamics/)
 pip3 install -e .
 ```
 
 > [!IMPORTANT]
-> **Step 4 must be re-run after every fresh clone**, even if the conda environment already exists. The `pip install -e .` command registers the local packages (`tasks`, `utils`, `dynamics`) into the active environment. Skipping it causes `ModuleNotFoundError: No module named 'tasks'` (or `utils`, `dynamics`) when running any training or evaluation script.
+> Re-run `pip3 install -e .` after every fresh clone. Skipping it causes `ModuleNotFoundError: No module named 'tasks'`.
 
 ### Option B — Manual installation
 
-1. Follow the [Isaac Lab pip installation instructions](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html), with the following modifications:
-- After cloning the Isaac Lab repository:
-```bash
-git clone git@github.com:isaac-sim/IsaacLab.git
-```
+1. Follow [Isaac Lab pip installation](https://isaac-sim.github.io/IsaacLab/main/source/setup/installation/pip_installation.html), pinning Isaac Lab to `v2.3.2`:
+   ```bash
+   git clone git@github.com:isaac-sim/IsaacLab.git
+   cd IsaacLab && git checkout v2.3.2
+   ```
+2. Clone + install this repo:
+   ```bash
+   git clone https://github.com/Amin-Yazdanshenas/isaac_drone_racer.git
+   cd isaac_drone_racer && pip3 install -e .
+   ```
 
-- Checkout the `v2.3.2` release tag:
-```bash
-cd IsaacLab
-git checkout v2.3.2
-```
+---
 
-2. Clone Isaac Drone Racer:
-```bash
-git clone https://github.com/Amin-Yazdanshenas/isaac_drone_racer.git
-```
+## Tasks
 
-3. Install the modules in editable mode
-```bash
-cd isaac_drone_racer
-pip3 install -e .
-```
+| Task ID | Action | Observation | Use case |
+|---------|--------|-------------|----------|
+| `Isaac-Drone-Racer-v0` / `-Play-v0` | Motor ω | FPV grayscale + IMU (actor) / GT state (critic) | Deployable vision policy |
+| `Isaac-Drone-Racer-NoCam-v0` / `-NoCam-Play-v0` | Motor ω | Full GT state | Fast reward/dynamics iteration |
+| `Isaac-Drone-Racer-CTBR-v0` / `-CTBR-Play-v0` | CTBR | FPV grayscale + IMU (actor) / GT state (critic) | Vision policy with rate controller |
+| `Isaac-Drone-Racer-NoCam-CTBR-v0` / `-NoCam-CTBR-Play-v0` | CTBR | Full GT state | Fastest sanity test |
+
+**Motor ω** outputs 4 per-motor angular velocity setpoints; **CTBR** outputs `[c, ω_x, ω_y, ω_z]` (collective thrust + body-rate setpoints) and is converted to motor torques by a PD rate controller at physics frequency. CTBR gains: [tasks/drone_racer/configs/ctbr_gains.yaml](tasks/drone_racer/configs/ctbr_gains.yaml).
+
+---
 
 ## Usage
 
-Tasks are registered as standard Gym environments. PPO (via skrl) training variants:
+### Quick start — NoCam CTBR (recommended baseline)
 
-| Mode | Algorithm | Task IDs | Actor input | Action | Notes |
-|------|-----------|----------|-------------|--------|-------|
-| **Asymmetric AC** (camera) | PPO via skrl | `Isaac-Drone-Racer-v0` / `-Play-v0` | FPV 64×64 grayscale + IMU | Motor ω | Privileged GT critic |
-| **Ground-truth only** | PPO via skrl | `Isaac-Drone-Racer-NoCam-v0` / `-NoCam-Play-v0` | Full GT state | Motor ω | Fastest; no camera |
-| **CTBR + camera** | PPO via skrl | `Isaac-Drone-Racer-CTBR-v0` / `-CTBR-Play-v0` | FPV 64×64 grayscale + IMU | CTBR | Collective thrust + body rates |
-| **CTBR + GT-only** | PPO via skrl | `Isaac-Drone-Racer-NoCam-CTBR-v0` / `-NoCam-CTBR-Play-v0` | Full GT state | CTBR | Fastest CTBR sanity test |
-
-> [!NOTE]
-> CTBR variants swap the per-motor ω action for a 4-dim collective-thrust + body-rate setpoint (`[c, ω_x, ω_y, ω_z]`). PD gains are loaded from [tasks/drone_racer/configs/ctbr_gains.yaml](tasks/drone_racer/configs/ctbr_gains.yaml).
-
----
-
-### PPO — Asymmetric Actor-Critic (Camera + IMU)
-
-Trains a deployable policy using only onboard sensors (FPV camera + IMU). The critic sees privileged ground-truth state during training only.
+Fastest convergence, no camera required. ~15 min on RTX 4090.
 
 ```bash
 # Train
-python3 scripts/rl/train.py --task Isaac-Drone-Racer-v0 --headless --enable_cameras --num_envs 512
-
-# Play (headless — works on ≤ 6 GB VRAM; OpenCV window shows RGB + gate mask)
-python3 scripts/rl/play.py --task Isaac-Drone-Racer-Play-v0 --enable_cameras --headless --num_envs 1
-```
-
-Checkpoints: `logs/skrl/drone_racer/`
-
----
-
-### PPO — Ground-Truth Only (No Camera)
-
-Full simulator state as observations; camera disabled. Best for rapid iteration on rewards/dynamics.
-
-```bash
-# Train
-python3 scripts/rl/train.py --task Isaac-Drone-Racer-NoCam-v0 --headless --num_envs 4096
+python3 scripts/rl/train.py --task Isaac-Drone-Racer-NoCam-CTBR-v0 --headless --num_envs 4096
 
 # Play
+python3 scripts/rl/play.py --task Isaac-Drone-Racer-NoCam-CTBR-Play-v0 --num_envs 1
+```
+
+Checkpoints: `logs/skrl/drone_racer_nocam_ctbr/`
+
+### NoCam motor-ω (legacy baseline)
+
+```bash
+python3 scripts/rl/train.py --task Isaac-Drone-Racer-NoCam-v0 --headless --num_envs 4096
 python3 scripts/rl/play.py --task Isaac-Drone-Racer-NoCam-Play-v0 --num_envs 1
 ```
 
 Checkpoints: `logs/skrl/drone_racer_nocam/`
 
+### Vision tasks (FPV camera + IMU, asymmetric AC)
+
+Camera-based variants require `--enable_cameras`. Trains a deployable policy using only onboard sensors; the critic sees ground-truth during training only.
+
+```bash
+# Motor ω
+python3 scripts/rl/train.py --task Isaac-Drone-Racer-v0 --headless --enable_cameras --num_envs 512
+python3 scripts/rl/play.py --task Isaac-Drone-Racer-Play-v0 --enable_cameras --headless --num_envs 1
+
+# CTBR
+python3 scripts/rl/train.py --task Isaac-Drone-Racer-CTBR-v0 --headless --enable_cameras --num_envs 512
+python3 scripts/rl/play.py --task Isaac-Drone-Racer-CTBR-Play-v0 --enable_cameras --headless --num_envs 1
+```
+
+Checkpoints: `logs/skrl/drone_racer/` and `logs/skrl/drone_racer_ctbr/`.
+
 > [!NOTE]
-> You can pass additional CLI arguments supported by the [AppLauncher](https://isaac-sim.github.io/IsaacLab/main/source/tutorials/00_sim/launch_app.html). Additionally since IsaacLab supports the [Hydra Configuration System](https://isaac-sim.github.io/IsaacLab/main/source/features/hydra.html), task-specific parameters can be adjusted from CLI.
-> For example, to disable the motor model during training:
+> Extra CLI args from [AppLauncher](https://isaac-sim.github.io/IsaacLab/main/source/tutorials/00_sim/launch_app.html) work. Hydra overrides also work — e.g. disable the motor first-order lag:
 > ```bash
 > python3 scripts/rl/train.py --task Isaac-Drone-Racer-NoCam-v0 --headless --num_envs 4096 env.actions.control_action.use_motor_model=False
 > ```
 
 ---
 
-## Monitoring Training
-
-Training metrics are written to TensorBoard:
+## Monitoring training
 
 ```bash
 conda activate isaacsim
@@ -158,55 +145,65 @@ tensorboard --logdir logs/skrl --port 6006
 
 ---
 
-## Next Steps
+## Reward configuration
 
-- [ ] **Data-driven aerodynamic model pipeline** — integrate tools for data-driven system identification, calibration and include learned aerodynamic forces into the simulation environment.
-- [ ] **Power consumption model** — incorporate a detailed power model that accounts for battery discharge based on current draw.
-- [x] **Policy learning using onboard sensors** — asymmetric actor-critic training with FPV camera + IMU actor and privileged ground-truth critic.
-- [ ] **Curriculum learning** — staged difficulty ramp (gate spacing, speed targets) for faster convergence.
-- [ ] **Sim-to-real transfer** — domain randomisation of motor dynamics, aerodynamics, and camera noise for physical hardware deployment.
+Default `RewardsCfg` (`tasks/drone_racer/drone_racer_env_cfg.py`) reproduces the upstream PPO convergence behavior:
 
+| Term | Weight | Notes |
+|------|--------|-------|
+| `terminating` | -500 | Crash penalty |
+| `ang_vel_l2` | -0.0001 | Mild rate regularizer |
+| `progress` | 20 | Signed `prev_dist − cur_dist` (PPO needs the negative gradient on retreat) |
+| `gate_passed` | 400 | +1 pass / -1 miss (`penalize_miss=True`) |
+| `lookat_next` | 0.1 | Heading prior |
+
+Spawn (`CommandsCfg.target`): drone respawns at the previous gate +1 m forward (`spawn_lerp_alpha=0`, `spawn_forward_offset=1.0`, `spawn_forward_velocity=0`). `EventCfg.push_robot` is enabled (±0.1 N, ±0.05 N·m every 0–0.2 s) for domain randomization. `flyaway` terminates at 20 m from the target gate.
+
+---
 
 ## Troubleshooting
-- When running a workflow script, ensure that the IsaacLab conda environment is active:
-```bash
-conda activate env_isaaclab
-```
-- When launching Isaac Sim for the first time, it may take a significant amount of time to load (potentially 10 minutes). This is normal, please be patient.
 
-### GPU VRAM requirements (GUI mode)
+- Always activate the conda env before running anything: `conda activate isaacsim`.
+- First Isaac Sim launch may take up to 10 min to compile shaders. Subsequent runs are fast.
+- Camera tasks require `--enable_cameras`. NoCam tasks do **not** — running them with `--enable_cameras` just wastes GPU.
+- "Failed to add labels … using Replicator API" warnings on NoCam tasks are harmless — the camera is disabled in `__post_init__` so the labels are never read.
 
-Isaac Sim 5.1 loads the full RTX renderer stack at startup when running in GUI mode (without `--headless`). This pre-allocates roughly 4–5 GB of VRAM for ray-tracing buffers, BVH acceleration structures, and the viewport framebuffer — before any simulation or PyTorch code runs. On GPUs with 6 GB or less (e.g. RTX 3060 Laptop), this exhausts all available VRAM and causes a `CUDA error: CUBLAS_STATUS_ALLOC_FAILED` crash during environment creation.
+### GPU VRAM (GUI mode)
 
-**Workaround: always use `--headless` on GPUs with ≤ 6 GB VRAM.** The tiled camera still renders correctly in headless mode. A debug visualization window (RGB + target gate mask overlay) is shown via OpenCV when `--enable_cameras` is set:
+Isaac Sim 5.1 pre-allocates ~4–5 GB VRAM for the RTX renderer when not headless. On ≤ 6 GB GPUs this exhausts VRAM at scene creation → `CUDA error: CUBLAS_STATUS_ALLOC_FAILED`. Always pass `--headless` on small GPUs. GUI mode needs ≥ 8 GB.
 
-```bash
-# Camera task — headless required on ≤ 6 GB GPUs
-python3 scripts/rl/play.py --task Isaac-Drone-Racer-Play-v0 --enable_cameras --headless --num_envs 1
-```
+---
 
-GUI mode (no `--headless`) requires a GPU with **≥ 8 GB VRAM**.
+## Next steps
 
-## Acknowledgement
+- [x] CTBR action interface + tuned PD rate controller
+- [x] skrl PPO baseline (motor ω and CTBR variants, with and without camera)
+- [ ] Data-driven aerodynamic model — system identification + learned residuals
+- [ ] Power consumption model — battery discharge tied to motor current
+- [ ] Curriculum learning — staged gate spacing and speed targets
+- [ ] Sim-to-real transfer — domain randomization of motor dynamics, drag, camera noise
 
-- **Kaufmann, E., Bauersfeld, L., Loquercio, A., Müller, M., Koltun, V., & Scaramuzza, D.** (2023).
-  *Champion-level drone racing using deep reinforcement learning*.
-  [https://doi.org/10.1038/s41586-023-06419-4](https://doi.org/10.1038/s41586-023-06419-4)
+---
 
-- **Rudin, N., Hoeller, D., Reist, P., & Hutter, M.** (2022).
-  *Learning to Walk in Minutes Using Massively Parallel Deep Reinforcement Learning*.
-  [arXiv:2109.11978](https://arxiv.org/abs/2109.11978)
+## References
 
-- **Ferede, R., De Wagter, C., Izzo, D., & de Croon, G. C. H. E.** (2024).
-  *End-to-end Reinforcement Learning for Time-Optimal Quadcopter Flight*.
-  [https://doi.org/10.1109/ICRA57147.2024.10611665](https://doi.org/10.1109/ICRA57147.2024.10611665)
+- **kousheekc/isaac_drone_racer** — upstream project this repo is forked from. Targets an older Isaac Sim / Isaac Lab stack (Isaac Sim 4.5, Isaac Lab v2.1). [https://github.com/kousheekc/isaac_drone_racer](https://github.com/kousheekc/isaac_drone_racer)
+- **Kaufmann, E., Bauersfeld, L., Loquercio, A., Müller, M., Koltun, V., & Scaramuzza, D.** (2023). *Champion-level drone racing using deep reinforcement learning*. [doi.org/10.1038/s41586-023-06419-4](https://doi.org/10.1038/s41586-023-06419-4)
+- **Rudin, N., Hoeller, D., Reist, P., & Hutter, M.** (2022). *Learning to Walk in Minutes Using Massively Parallel Deep Reinforcement Learning*. [arXiv:2109.11978](https://arxiv.org/abs/2109.11978)
+- **Ferede, R., De Wagter, C., Izzo, D., & de Croon, G. C. H. E.** (2024). *End-to-end Reinforcement Learning for Time-Optimal Quadcopter Flight*. [doi.org/10.1109/ICRA57147.2024.10611665](https://doi.org/10.1109/ICRA57147.2024.10611665)
+
+---
 
 ## License
-This project is licensed under the BSD 3-Clause License - see the [LICENSE](https://github.com/kousheekc/isaac_drone_racer/blob/master/LICENSE) file for details.
+
+BSD 3-Clause. See [LICENSE](LICENSE).
 
 ## Contact
-Kousheek Chakraborty - kousheekc@gmail.com
 
-Project Link: [https://github.com/Amin-Yazdanshenas/isaac_drone_racer](https://github.com/Amin-Yazdanshenas/isaac_drone_racer)
+Amin Yazdanshenas — yazdanshenas.amin@gmail.com
 
-If you encounter any difficulties, feel free to reach out through the Issues section. If you find any bugs or have improvements to suggest, don't hesitate to make a pull request.
+Project link: [https://github.com/Amin-Yazdanshenas/isaac_drone_racer](https://github.com/Amin-Yazdanshenas/isaac_drone_racer)
+
+Upstream author (kousheekc/isaac_drone_racer): Kousheek Chakraborty — kousheekc@gmail.com
+
+Issues, bug reports, and PRs welcome.
