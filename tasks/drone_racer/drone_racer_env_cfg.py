@@ -355,8 +355,9 @@ class DroneRacerEnvCfg_NoCam_PLAY(ManagerBasedRLEnvCfg):
         self.commands.target.randomise_start = True
         self.events.reset_base = None
 
-        # Enable RGB + segmentation for FPV debug window (visualization only — not used as policy observations)
-        self.scene.tiled_camera.data_types = ["rgb", "semantic_segmentation"]
+        # Disable the camera entirely — NoCam play must run without --enable_cameras.
+        # (use the camera task variants for FPV debug visualization.)
+        self.scene.tiled_camera = None
 
         self.decimation = 4
         self.episode_length_s = 20
