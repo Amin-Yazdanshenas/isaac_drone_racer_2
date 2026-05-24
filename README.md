@@ -26,7 +26,7 @@ Key highlights of the Isaac Drone Racer project:
 4. **Onboard Sensor Suite** — Includes simulated fisheye camera, IMU and collision detection.
 5. **Track Generator** — Dynamically generate custom race tracks.
 6. **Logger and Plotter** — Integrated tools for monitoring and visualizing flight behavior.
-7. **Multiple RL training modes** — PPO (asymmetric AC, MonoRace compact state) and DreamerV3 world-model RL, all coexisting without conflict.
+7. **PPO via skrl** — asymmetric actor-critic with FPV camera + IMU policy and privileged ground-truth critic, plus a ground-truth-only variant for fast iteration.
 
 ### Prerequisites
 - Workstation capable of running Isaac Sim (see [link](https://github.com/isaac-sim/IsaacSim?tab=readme-ov-file#prerequisites-and-environment-setup))
@@ -59,12 +59,12 @@ conda env create -f environment.yml
 conda activate isaacsim
 
 # 4. Install ALL local project modules in editable mode (required every fresh clone)
-#    This registers tasks/, utils/, dynamics/, and dreamer/ so Python can import them.
+#    This registers tasks/, utils/, and dynamics/ so Python can import them.
 pip3 install -e .
 ```
 
 > [!IMPORTANT]
-> **Step 4 must be re-run after every fresh clone**, even if the conda environment already exists. The `pip install -e .` command registers the local packages (`tasks`, `utils`, `dynamics`, `dreamer`) into the active environment. Skipping it causes `ModuleNotFoundError: No module named 'dreamer'` (or `tasks`, `utils`) when running any training or evaluation script.
+> **Step 4 must be re-run after every fresh clone**, even if the conda environment already exists. The `pip install -e .` command registers the local packages (`tasks`, `utils`, `dynamics`) into the active environment. Skipping it causes `ModuleNotFoundError: No module named 'tasks'` (or `utils`, `dynamics`) when running any training or evaluation script.
 
 ### Option B — Manual installation
 
@@ -93,14 +93,12 @@ pip3 install -e .
 
 ## Usage
 
-Tasks are registered as standard Gym environments. Three distinct RL training approaches are available:
+Tasks are registered as standard Gym environments. Two PPO (via skrl) training variants are available:
 
 | Mode | Algorithm | Task IDs | Actor input | Notes |
 |------|-----------|----------|-------------|-------|
 | **Asymmetric AC** (camera) | PPO via skrl | `Isaac-Drone-Racer-v0` / `-Play-v0` | FPV 64×64 grayscale + IMU | Privileged GT critic |
 | **Ground-truth only** | PPO via skrl | `Isaac-Drone-Racer-NoCam-v0` / `-NoCam-Play-v0` | Full GT state | Fastest; no camera |
-| **MonoRace** (compact perception) | PPO via skrl | `Isaac-Drone-Racer-MonoRace-v0` / `-MonoRace-Play-v0` | 9-dim gate geometry + IMU | Inspired by MAVLab 2025 |
-| **DreamerV3** (world model) | DreamerV3 | `Isaac-Drone-Racer-Dreamer-{RGB,Mask,RGBMask}-v0` / `-Dreamer-Play-v0` | Raw 64×64 image (RGB / mask / both) | Separate train/eval scripts |
 
 ---
 
@@ -134,84 +132,6 @@ python3 scripts/rl/play.py --task Isaac-Drone-Racer-NoCam-Play-v0 --num_envs 1
 
 Checkpoints: `logs/skrl/drone_racer_nocam/`
 
----
-
-### PPO — MonoRace Compact Perception
-
-Inspired by the MAVLab 2025 MonoRace approach. Extracts 9 compact geometric features from the semantic segmentation mask (centroid, bounding box, area, pinhole distance estimate) and combines them with drone dynamics into a 26-dim state fed to a lightweight 37K-parameter MLP policy. More sample-efficient than raw pixel input.
-
-```bash
-# Train (512 envs — camera-constrained on 6 GB VRAM)
-python3 scripts/rl/train.py --task Isaac-Drone-Racer-MonoRace-v0 --headless --enable_cameras --num_envs 512
-
-# Play
-python3 scripts/rl/play.py --task Isaac-Drone-Racer-MonoRace-Play-v0 --enable_cameras --headless --num_envs 1
-```
-
-Checkpoints: `logs/skrl/drone_racer_monorace/`
-
----
-
-### DreamerV3 — World-Model RL
-
-Inspired by [Dream to Fly (Romero et al., 2025)](https://arxiv.org/abs/2501.14377). A self-contained PyTorch DreamerV3 implementation learns a world model (RSSM) from 64×64 images, then trains an actor-critic entirely on *imagined* rollouts inside that world model. No skrl dependency — uses separate `train_dreamer.py` / `evaluate_dreamer.py` scripts.
-
-**Three observation modes:**
-
-| `--obs_mode` | Task ID | Image input | Channels |
-|-------------|---------|-------------|---------|
-| `rgb` | `Isaac-Drone-Racer-Dreamer-RGB-v0` | Raw RGB | 3 |
-| `mask` | `Isaac-Drone-Racer-Dreamer-Mask-v0` | Binary gate mask | 1 |
-| `rgb_mask` | `Isaac-Drone-Racer-Dreamer-RGBMask-v0` | RGB + gate mask | 4 |
-
-All modes additionally receive a 13-dim kinematics state vector (ang_vel, quaternion, lin_vel, target gate position in body frame) through a separate MLP encoder fused into the RSSM.
-
-```bash
-# Train — RGB (closest to the Dream to Fly paper)
-python3 scripts/rl/train_dreamer.py \
-    --task Isaac-Drone-Racer-Dreamer-RGB-v0 \
-    --obs_mode rgb --num_envs 32 --max_steps 2000000 \
-    --headless --enable_cameras
-
-# Train — binary gate mask only
-python3 scripts/rl/train_dreamer.py \
-    --task Isaac-Drone-Racer-Dreamer-Mask-v0 \
-    --obs_mode mask --num_envs 32 --max_steps 2000000 \
-    --headless --enable_cameras
-
-# Train — RGB + mask (4-channel)
-python3 scripts/rl/train_dreamer.py \
-    --task Isaac-Drone-Racer-Dreamer-RGBMask-v0 \
-    --obs_mode rgb_mask --num_envs 32 --max_steps 2000000 \
-    --headless --enable_cameras
-
-# Resume from checkpoint
-python3 scripts/rl/train_dreamer.py \
-    --task Isaac-Drone-Racer-Dreamer-RGB-v0 \
-    --obs_mode rgb \
-    --checkpoint logs/dreamer/rgb/<run>/checkpoints/agent_latest.pt \
-    --headless --enable_cameras
-
-# Evaluate / play (deterministic rollouts, saves eval_results.csv)
-python3 scripts/rl/evaluate_dreamer.py \
-    --task Isaac-Drone-Racer-Dreamer-Play-v0 \
-    --obs_mode rgb \
-    --checkpoint logs/dreamer/rgb/<run>/checkpoints/agent_latest.pt \
-    --num_episodes 10 --headless --enable_cameras
-
-# Monitor training
-tensorboard --logdir logs/dreamer
-```
-
-Checkpoints: `logs/dreamer/<obs_mode>/<timestamp>/checkpoints/`
-
-**Architecture (scaled for 6 GB VRAM):**
-- RSSM: 512-dim recurrent state, 32×32 categorical stochastic latent
-- All MLPs: 256 hidden units, 4 layers, LayerNorm + SiLU
-- Imagination horizon: 15 steps
-- Replay buffer: 500 K steps
-- Warmup: 1 000 random steps before learning begins
-
 > [!NOTE]
 > You can pass additional CLI arguments supported by the [AppLauncher](https://isaac-sim.github.io/IsaacLab/main/source/tutorials/00_sim/launch_app.html). Additionally since IsaacLab supports the [Hydra Configuration System](https://isaac-sim.github.io/IsaacLab/main/source/features/hydra.html), task-specific parameters can be adjusted from CLI.
 > For example, to disable the motor model during training:
@@ -221,77 +141,15 @@ Checkpoints: `logs/dreamer/<obs_mode>/<timestamp>/checkpoints/`
 
 ---
 
-## Monitoring DreamerV3 Training
+## Monitoring Training
 
-### Launch TensorBoard
+Training metrics are written to TensorBoard:
 
 ```bash
 conda activate isaacsim
-tensorboard --logdir logs/dreamer --port 6006
+tensorboard --logdir logs/skrl --port 6006
 # open http://localhost:6006
 ```
-
----
-
-### Phase 1 — Is the world model learning? (first 100K steps)
-
-| Metric | Healthy range | Warning sign |
-|--------|--------------|--------------|
-| `wm/kl_dyn` | 2–15 nats, rising then stable | Near 0 → z collapsed to prior; world model is random |
-| `wm/kl_rep` | 0.5–3 nats | > 10 → representation loss dominating; posterior collapse |
-| `wm/image_loss` | drops from ~0.7 → 0.3–0.5 | Stuck at 0.693 → predicting all-grey (sigmoid = 0.5) |
-| `wm/reward_loss` | steadily decreasing | Flat → world model cannot predict reward |
-
-`wm/kl_dyn` is the primary health indicator. If it collapses to near zero at any point, everything downstream (actor, critic, rewards) is trained on random noise.
-
----
-
-### Phase 2 — Is the actor learning? (100K–1M steps)
-
-| Metric | Healthy range | Warning sign |
-|--------|--------------|--------------|
-| `actor/entropy` | ≥ 1.0 nats, stable | Drops below 0.5 → policy collapsed to near-deterministic |
-| `actor/loss` | fluctuating, trending down | Diverges toward +∞ → gradient explosion |
-| `imag/reward_mean` | trending upward | Stuck strongly negative → world model predicting failure |
-| `imag/return_mean` | trending upward | Constant negative → pessimism spiral |
-| `return/scale` | > 1.0 after 200K steps | Stuck at 1.0 → returns have zero variance (z collapsed) |
-
----
-
-### Phase 3 — Is the drone navigating? (env metrics)
-
-| Metric | What to look for |
-|--------|-----------------|
-| `env/episode_reward` | Smooth upward trend; first positive episodes usually at 50K–200K steps |
-| `env/episode_length` | Increasing → drone surviving longer before crash/timeout |
-| `env/episode_gates` | **The key metric.** First nonzero value = first gate passed. Target: consistent ≥ 3 gates/episode by 3M steps |
-
----
-
-### Diagnostic decision tree
-
-```
-env/episode_gates == 0 after 1M steps
-├── wm/kl_dyn ≈ 0
-│   └── World model broken. Check beta_dyn (too low), beta_rep (too high), free_bits.
-├── actor/entropy < 0.5
-│   └── Policy collapsed. Check entropy_scale (too low), entropy_min floor.
-└── imag/return_mean strongly negative and not improving
-    └── Pessimism spiral. Usually resolves at ~500K steps once wm/reward_loss drops.
-        If return/scale == 1.0, returns have no variance → normaliser inactive → z likely collapsed.
-```
-
-**Common failure pattern — KL collapse at ~40K steps:**
-`wm/kl_dyn` spikes briefly then falls to < 0.01. Cause: `beta_rep` too high with `free_bits=0`. Fix: keep `beta_rep ≤ 0.1`.
-
-**Common failure pattern — entropy collapse:**
-`actor/entropy` drops below 0.3 and stays there. Cause: entropy floor not active or `entropy_scale` too small. Fix: raise `entropy_scale`, verify `entropy_min = 1.0`.
-
----
-
-### Comparing runs
-
-TensorBoard loads all subdirectories under `--logdir` simultaneously. Runs are named by timestamp automatically. Use the regex filter at the top of the Scalars panel to isolate specific runs. Comparing `wm/kl_dyn` between runs is the fastest way to confirm whether a config change actually improved world model learning.
 
 ---
 
@@ -300,8 +158,6 @@ TensorBoard loads all subdirectories under `--logdir` simultaneously. Runs are n
 - [ ] **Data-driven aerodynamic model pipeline** — integrate tools for data-driven system identification, calibration and include learned aerodynamic forces into the simulation environment.
 - [ ] **Power consumption model** — incorporate a detailed power model that accounts for battery discharge based on current draw.
 - [x] **Policy learning using onboard sensors** — asymmetric actor-critic training with FPV camera + IMU actor and privileged ground-truth critic.
-- [x] **MonoRace compact perception** — compact gate geometry features (centroid, bbox, distance) replacing raw pixel input; ~37K-parameter MLP policy.
-- [x] **DreamerV3 world-model RL** — self-contained PyTorch DreamerV3 with RGB / mask / RGB+mask observation modes; learns from imagined rollouts inside a learned world model.
 - [ ] **Curriculum learning** — staged difficulty ramp (gate spacing, speed targets) for faster convergence.
 - [ ] **Sim-to-real transfer** — domain randomisation of motor dynamics, aerodynamics, and camera noise for physical hardware deployment.
 
@@ -339,14 +195,6 @@ GUI mode (no `--headless`) requires a GPU with **≥ 8 GB VRAM**.
 - **Ferede, R., De Wagter, C., Izzo, D., & de Croon, G. C. H. E.** (2024).
   *End-to-end Reinforcement Learning for Time-Optimal Quadcopter Flight*.
   [https://doi.org/10.1109/ICRA57147.2024.10611665](https://doi.org/10.1109/ICRA57147.2024.10611665)
-
-- **Romero, A., Shenai, A., Geles, I., Aljalbout, E., & Scaramuzza, D.** (2025).
-  *Dream to Fly: Model-Based Reinforcement Learning for Vision-Based Drone Flight*.
-  [arXiv:2501.14377](https://arxiv.org/abs/2501.14377)
-
-- **Hafner, D., Lillicrap, T., Norouzi, M., & Ba, J.** (2023).
-  *Mastering Diverse Domains through World Models (DreamerV3)*.
-  [arXiv:2301.04104](https://arxiv.org/abs/2301.04104)
 
 ## License
 This project is licensed under the BSD 3-Clause License - see the [LICENSE](https://github.com/kousheekc/isaac_drone_racer/blob/master/LICENSE) file for details.

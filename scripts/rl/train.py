@@ -188,11 +188,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # configure and instantiate the skrl runner
     # https://skrl.readthedocs.io/en/latest/api/utils/runner.html
-    from tasks.drone_racer.agents.cam_runner import CAM_TASKS, MONORACE_TASKS, CamRunner, MonoRaceRunner
+    from tasks.drone_racer.agents.cam_runner import CAM_TASKS, CamRunner
 
-    if args_cli.task in MONORACE_TASKS:
-        runner = MonoRaceRunner(env, agent_cfg)
-    elif args_cli.task in CAM_TASKS:
+    if args_cli.task in CAM_TASKS:
         runner = CamRunner(env, agent_cfg)
     else:
         runner = Runner(env, agent_cfg)

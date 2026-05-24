@@ -1,4 +1,0 @@
-obs_mode: rgb_mask
-image_channels: 4
-cnn_depth: 16
-mlp_units: 256
