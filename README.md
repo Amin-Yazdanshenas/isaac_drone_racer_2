@@ -93,12 +93,17 @@ pip3 install -e .
 
 ## Usage
 
-Tasks are registered as standard Gym environments. Two PPO (via skrl) training variants are available:
+Tasks are registered as standard Gym environments. PPO (via skrl) training variants:
 
-| Mode | Algorithm | Task IDs | Actor input | Notes |
-|------|-----------|----------|-------------|-------|
-| **Asymmetric AC** (camera) | PPO via skrl | `Isaac-Drone-Racer-v0` / `-Play-v0` | FPV 64×64 grayscale + IMU | Privileged GT critic |
-| **Ground-truth only** | PPO via skrl | `Isaac-Drone-Racer-NoCam-v0` / `-NoCam-Play-v0` | Full GT state | Fastest; no camera |
+| Mode | Algorithm | Task IDs | Actor input | Action | Notes |
+|------|-----------|----------|-------------|--------|-------|
+| **Asymmetric AC** (camera) | PPO via skrl | `Isaac-Drone-Racer-v0` / `-Play-v0` | FPV 64×64 grayscale + IMU | Motor ω | Privileged GT critic |
+| **Ground-truth only** | PPO via skrl | `Isaac-Drone-Racer-NoCam-v0` / `-NoCam-Play-v0` | Full GT state | Motor ω | Fastest; no camera |
+| **CTBR + camera** | PPO via skrl | `Isaac-Drone-Racer-CTBR-v0` / `-CTBR-Play-v0` | FPV 64×64 grayscale + IMU | CTBR | Collective thrust + body rates |
+| **CTBR + GT-only** | PPO via skrl | `Isaac-Drone-Racer-NoCam-CTBR-v0` / `-NoCam-CTBR-Play-v0` | Full GT state | CTBR | Fastest CTBR sanity test |
+
+> [!NOTE]
+> CTBR variants swap the per-motor ω action for a 4-dim collective-thrust + body-rate setpoint (`[c, ω_x, ω_y, ω_z]`). PD gains are loaded from [tasks/drone_racer/configs/ctbr_gains.yaml](tasks/drone_racer/configs/ctbr_gains.yaml).
 
 ---
 

@@ -284,6 +284,12 @@ class DroneRacerEnvCfg_PLAY(ManagerBasedRLEnvCfg):
         # Disable push robot events
         self.events.push_robot = None
 
+        # Respawn fix: without randomise_start the drone stays in its crashed pose on reset
+        # instead of being teleported to a gate, so the play loop visually loops forever.
+        # reset_base disabled so randomise_start is the only repositioner.
+        self.commands.target.randomise_start = True
+        self.events.reset_base = None
+
         # Enable RGB alongside segmentation so the FPV visualization window can show both
         self.scene.tiled_camera.data_types = ["rgb", "semantic_segmentation"]
 
@@ -343,6 +349,12 @@ class DroneRacerEnvCfg_NoCam_PLAY(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         self.events.push_robot = None
 
+        # Respawn fix: without randomise_start the drone stays in its crashed pose on reset
+        # instead of being teleported to a gate, so the play loop visually loops forever.
+        # reset_base disabled so randomise_start is the only repositioner.
+        self.commands.target.randomise_start = True
+        self.events.reset_base = None
+
         # Enable RGB + segmentation for FPV debug window (visualization only — not used as policy observations)
         self.scene.tiled_camera.data_types = ["rgb", "semantic_segmentation"]
 
@@ -353,3 +365,46 @@ class DroneRacerEnvCfg_NoCam_PLAY(ManagerBasedRLEnvCfg):
         self.sim.dt = 1 / 400
         self.sim.render_interval = self.decimation
 
+
+
+# ============================================================
+# CTBR-action variants for skrl-PPO
+# ============================================================
+# Same observation + reward + termination configs as the motor-omega tasks, but swap the
+# action term to CTBRActionCfg (collective thrust + body rates, action_dim=4). Reuses the
+# existing skrl_cfg.yaml / skrl_cfg_nocam_ctbr.yaml network shapes.
+
+
+@configclass
+class CTBRActionsCfg:
+    """CTBR (collective thrust + body rates) action space."""
+
+    control_action: mdp.CTBRActionCfg = mdp.CTBRActionCfg()
+
+
+@configclass
+class DroneRacerEnvCfg_CTBR(DroneRacerEnvCfg):
+    """Camera + IMU asymmetric AC, CTBR action."""
+
+    actions: CTBRActionsCfg = CTBRActionsCfg()
+
+
+@configclass
+class DroneRacerEnvCfg_CTBR_PLAY(DroneRacerEnvCfg_PLAY):
+    """Camera + IMU eval, CTBR action."""
+
+    actions: CTBRActionsCfg = CTBRActionsCfg()
+
+
+@configclass
+class DroneRacerEnvCfg_NoCam_CTBR(DroneRacerEnvCfg_NoCam):
+    """Ground-truth-only training, CTBR action — fastest sanity test."""
+
+    actions: CTBRActionsCfg = CTBRActionsCfg()
+
+
+@configclass
+class DroneRacerEnvCfg_NoCam_CTBR_PLAY(DroneRacerEnvCfg_NoCam_PLAY):
+    """Ground-truth-only eval, CTBR action."""
+
+    actions: CTBRActionsCfg = CTBRActionsCfg()
