@@ -300,6 +300,26 @@ def main():
             # env stepping
             obs, rew, terminated, truncated, info = env.step(actions)
 
+        # Diagnostic: print which termination fired, current pos, vel, gate idx.
+        # Helps debug "drone respawns but doesn't fly" loops.
+        if (terminated.any() or truncated.any()) and args_cli.num_envs == 1:
+            try:
+                term_mgr = env.unwrapped.termination_manager
+                pos = env.unwrapped.scene["robot"].data.root_pos_w[0].cpu().tolist()
+                vel = env.unwrapped.scene["robot"].data.root_lin_vel_w[0].cpu().tolist()
+                cmd = env.unwrapped.command_manager.get_term("target")
+                gate_idx = int(cmd.next_gate_idx[0].item())
+                term_dict = {}
+                for name in term_mgr.active_terms:
+                    val = term_mgr.get_term(name)
+                    term_dict[name] = bool(val[0].item()) if val.numel() else None
+                print(
+                    f"[RESET] term={term_dict} | pos=({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}) "
+                    f"vel=({vel[0]:.2f}, {vel[1]:.2f}, {vel[2]:.2f}) | next_gate_idx={gate_idx}"
+                )
+            except Exception as exc:
+                print(f"[RESET] (diag failed: {exc!r})")
+
         if fpv_camera is not None:
             try:
                 _target_cmd = env.unwrapped.command_manager.get_term("target")
