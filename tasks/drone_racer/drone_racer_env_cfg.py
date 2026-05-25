@@ -14,7 +14,6 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, ImuCfg, TiledCameraCfg
@@ -205,10 +204,12 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
-    collision = DoneTerm(
-        func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 1.0},
-    )
+    # Sim 5.1 ContactSensor on this articulation is broken — net_forces_w on the body
+    # reports a static phantom (76.7 N with broken masses, 1869 N with correct masses)
+    # that scales with body inertia and leaks into the filtered force_matrix_w too.
+    # Fix attempted via: prop mass + inertia, zero init motor vel, disable gyroscopic,
+    # filter_prim_paths_expr — none worked. Falling back to a kinematic ground check.
+    collision = DoneTerm(func=mdp.ground_crash, params={"z_threshold": 0.1})
 
 
 @configclass
