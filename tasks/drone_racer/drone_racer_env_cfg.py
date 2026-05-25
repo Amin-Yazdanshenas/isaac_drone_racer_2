@@ -14,6 +14,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, ImuCfg, TiledCameraCfg
@@ -51,11 +52,17 @@ class DroneRacerSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = FIVE_IN_DRONE.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # sensors
-    # Narrowed to body only — Sim 5.1 net_forces_w on this articulation reports phantom
-    # values (see mdp.crash_contact docstring), so the sensor is no longer used for
-    # termination. Kept attached so callers can still query contacts if needed; props
-    # excluded to reduce wasted contact-buffer allocation.
-    collision_sensor: ContactSensorCfg = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
+    # Body-only (props in Sim 5.1 hold persistent contact data per NVIDIA's PhysX Contact
+    # Report API doc — never clear cleanly after a crash). history_length=3 + update_period=0
+    # forces the PhysX backend to refresh contacts every sim step instead of relying on the
+    # cached stream. force_threshold gates out residual small reports.
+    collision_sensor: ContactSensorCfg = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/body",
+        history_length=3,
+        update_period=0.0,
+        force_threshold=10.0,
+        debug_vis=False,
+    )
     imu = ImuCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
     tiled_camera: TiledCameraCfg = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/body/camera",
@@ -208,12 +215,14 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
-    # Sim 5.1 ContactSensor on this articulation is broken — net_forces_w on the body
-    # reports a static phantom (76.7 N with broken masses, 1869 N with correct masses)
-    # that scales with body inertia and leaks into the filtered force_matrix_w too.
-    # Fix attempted via: prop mass + inertia, zero init motor vel, disable gyroscopic,
-    # filter_prim_paths_expr — none worked. Falling back to a kinematic ground check.
-    collision = DoneTerm(func=mdp.ground_crash, params={"z_threshold": 0.1})
+    # ContactSensor reconfigured per NVIDIA Sim 5.1 docs (body-only path,
+    # history_length=3, update_period=0). Threshold tuned above the body phantom
+    # so real ground/gate impacts (kN-range) still fire. If the phantom drops
+    # with the new sensor settings, lower this back to ~10 N.
+    collision = DoneTerm(
+        func=mdp.illegal_contact,
+        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 2000.0},
+    )
 
 
 @configclass
