@@ -21,8 +21,14 @@ if TYPE_CHECKING:
 
 # Per-body static phantom forces (N) reported by Sim 5.1 ContactSensor at rest.
 # Indexed by body name. Anything not listed defaults to 0 (no subtraction).
+# Body phantom: gravity/applied-wrench accounting on the drone body.
+# Prop phantoms: gyroscopic forces from the spinning motors (200 rad/s init).
 _PHANTOM_FORCE_BY_BODY: dict[str, float] = {
     "body": 76.71774,
+    "prop1": 21.52437,
+    "prop2": 21.52437,
+    "prop3": 21.52437,
+    "prop4": 21.52437,
 }
 
 
