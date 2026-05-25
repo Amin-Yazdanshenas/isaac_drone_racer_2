@@ -51,7 +51,11 @@ class DroneRacerSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = FIVE_IN_DRONE.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # sensors
-    collision_sensor: ContactSensorCfg = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", debug_vis=False)
+    # Narrowed to body only — Sim 5.1 net_forces_w on this articulation reports phantom
+    # values (see mdp.crash_contact docstring), so the sensor is no longer used for
+    # termination. Kept attached so callers can still query contacts if needed; props
+    # excluded to reduce wasted contact-buffer allocation.
+    collision_sensor: ContactSensorCfg = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
     imu = ImuCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
     tiled_camera: TiledCameraCfg = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/body/camera",
@@ -118,8 +122,8 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
-    # reset
-    # TODO: Resetting base happens in the command reset also for the moment
+    # reset — fixed corner spawn. Training disables this and respawns at a random gate
+    # via the command term instead; PLAY keeps this active for a predictable start pose.
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
@@ -127,7 +131,7 @@ class EventCfg:
             "pose_range": {
                 "x": (-3.5, -1.5),
                 "y": (-0.5, 0.5),
-                "z": (1.5, 0.5),
+                "z": (0.5, 1.5),
                 "roll": (-0.0, 0.0),
                 "pitch": (-0.0, 0.0),
                 "yaw": (-0.0, 0.0),
@@ -282,12 +286,12 @@ class DroneRacerEnvCfg_PLAY(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         """Post initialization."""
 
-        # Disable push robot events
+        # Disable push robot events for clean inference.
         self.events.push_robot = None
 
-        # Upstream PLAY behavior: leave randomise_start=None (default) so each reset puts the
-        # drone at the fixed reset_base pose (corner spawn) targeting gate 0. Predictable
-        # respawn instead of teleporting between random gates each crash.
+        # PLAY relies on CommandsCfg.target.randomise_start=None (default) + reset_base
+        # event left active so each crash returns the drone to the corner spawn targeting
+        # gate 0 — predictable instead of teleporting between random gates.
 
         # Enable RGB alongside segmentation so the FPV visualization window can show both
         self.scene.tiled_camera.data_types = ["rgb", "semantic_segmentation"]
@@ -348,8 +352,9 @@ class DroneRacerEnvCfg_NoCam_PLAY(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         self.events.push_robot = None
 
-        # Upstream PLAY behavior: leave randomise_start=None (default) and keep reset_base
-        # active so each crash drops the drone at the fixed corner spawn targeting gate 0.
+        # PLAY relies on CommandsCfg.target.randomise_start=None (default) + reset_base
+        # event left active so each crash returns the drone to the corner spawn targeting
+        # gate 0 — predictable instead of teleporting between random gates.
 
         # Disable the camera entirely — NoCam play must run without --enable_cameras.
         # (use the camera task variants for FPV debug visualization.)
@@ -361,7 +366,6 @@ class DroneRacerEnvCfg_NoCam_PLAY(ManagerBasedRLEnvCfg):
         self.viewer.lookat = (0.0, 0.0, 0.0)
         self.sim.dt = 1 / 400
         self.sim.render_interval = self.decimation
-
 
 
 # ============================================================
