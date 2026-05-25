@@ -205,8 +205,12 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
+    # Threshold bumped from upstream 0.01 N -> 100 N: Isaac Sim 5.1's ContactSensor reports a
+    # static ~76 N phantom force on `body` even at zero velocity, which makes illegal_contact
+    # fire every step (drone respawns infinitely in PLAY). Real crash impacts are kN-range so
+    # 100 N still catches actual collisions.
     collision = DoneTerm(
-        func=mdp.illegal_contact, params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 0.01}
+        func=mdp.illegal_contact, params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 100.0}
     )
 
 
