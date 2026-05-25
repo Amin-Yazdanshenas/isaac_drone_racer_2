@@ -2,18 +2,31 @@
 
 ---
 
-# Isaac Drone Racer
+# Isaac Drone Racer 2: RL-Based Autonomous Drone Racing in Isaac Sim 5.1
 
 [![IsaacSim](https://img.shields.io/badge/IsaacSim-5.1-silver.svg)](https://docs.isaacsim.omniverse.nvidia.com/latest/index.html)
 [![IsaacLab](https://img.shields.io/badge/IsaacLab-2.3.2-silver.svg)](https://isaac-sim.github.io/IsaacLab/)
 [![Python](https://img.shields.io/badge/python-3.11-blue.svg)](https://docs.python.org/3/whatsnew/3.11.html)
 [![License](https://img.shields.io/badge/license-BSD--3-yellow.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
-**Isaac Drone Racer** is a simulation framework for autonomous drone racing built on [Isaac Lab](https://github.com/isaac-sim/IsaacLab). Trains skrl PPO policies in massively parallel simulation with accurate rotor dynamics, a tunable CTBR controller, and a programmable track generator.
+**Isaac Drone Racer 2** is my modernized fork of the original Isaac Drone Racer project, an open-source reinforcement learning framework for autonomous drone racing initially developed by Kousheek Chakraborty.
 
-Forked from [kousheekc/isaac_drone_racer](https://github.com/kousheekc/isaac_drone_racer) (Isaac Sim 4.5 / Isaac Lab v2.1) and ported to **Isaac Sim 5.1 / Isaac Lab 2.3.2 / Python 3.11**. The upstream Dreamer/MonoRace experimental branches have been removed; this repo focuses on the skrl PPO baselines.
+In this updated version, I ported and reorganized the framework for newer NVIDIA robotics simulation tools, including Isaac Sim 5.1, Isaac Lab 2.3.2, and Python 3.11. The goal of this fork is to provide a cleaner and more practical research platform for high-speed autonomous UAV racing, reinforcement learning, camera-based policy learning, and sim-to-real development.
 
-Demo video: [https://youtu.be/wLTYtpEUEEk](https://youtu.be/wLTYtpEUEEk)
+My contributions include:
+
+Porting the framework to Isaac Sim 5.1, Isaac Lab 2.3.2, and Python 3.11
+Cleaning and reorganizing the forked repository for easier setup and experimentation
+Focusing the implementation on practical skrl PPO-based reinforcement learning baselines
+Supporting no-camera and camera-based drone racing training modes
+Working with FPV camera and IMU-based onboard observations
+Supporting asymmetric actor-critic learning with privileged simulation state for the critic
+Exploring multiple control/action interfaces, including motor angular-velocity commands and CTBR control
+Improving documentation for setup, training, playback, TensorBoard monitoring, and troubleshooting
+
+The project is intended for researchers and developers interested in reinforcement learning, autonomous drone racing, UAV control, robotics simulation, Isaac Sim, Isaac Lab, camera-based policy learning, and sim-to-real transfer.
+
+Demo video: [https://www.youtube.com/watch?v=PsDE_80xkKw](https://www.youtube.com/watch?v=PsDE_80xkKw)
 
 ---
 
