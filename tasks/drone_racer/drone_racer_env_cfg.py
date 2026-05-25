@@ -215,13 +215,9 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
-    # ContactSensor reconfigured per NVIDIA Sim 5.1 docs (body-only path,
-    # history_length=3, update_period=0). Threshold tuned above the body phantom
-    # so real ground/gate impacts (kN-range) still fire. If the phantom drops
-    # with the new sensor settings, lower this back to ~10 N.
     collision = DoneTerm(
         func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 2000.0},
+        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 10.0},
     )
 
 
