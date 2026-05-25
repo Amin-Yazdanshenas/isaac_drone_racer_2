@@ -52,13 +52,21 @@ class DroneRacerSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = FIVE_IN_DRONE.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # sensors
-    # Contact sensor restricted to the drone body (props in Sim 5.1 carry stale data after
-    # a crash that never clears). filter_prim_paths_expr makes PhysX populate
-    # force_matrix_w with ONLY contacts against ground + gates — net_forces_w still includes
-    # all internal articulation phantoms, so the termination reads force_matrix_w instead.
+    # Contact sensor restricted to the drone body (props in Sim 5.1 carry stale data).
+    # filter_prim_paths_expr makes PhysX populate force_matrix_w with ONLY the listed prims;
+    # each entry must match exactly 1 prim PER env, so the 7 gates need separate entries.
     collision_sensor: ContactSensorCfg = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/body",
-        filter_prim_paths_expr=["/World/Ground", "/World/envs/env_.*/Gate_.*"],
+        filter_prim_paths_expr=[
+            "/World/Ground",
+            "/World/envs/env_.*/Gate_1",
+            "/World/envs/env_.*/Gate_2",
+            "/World/envs/env_.*/Gate_3",
+            "/World/envs/env_.*/Gate_4",
+            "/World/envs/env_.*/Gate_5",
+            "/World/envs/env_.*/Gate_6",
+            "/World/envs/env_.*/Gate_7",
+        ],
         debug_vis=False,
     )
     imu = ImuCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
