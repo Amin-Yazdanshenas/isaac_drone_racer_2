@@ -14,7 +14,6 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
-from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, ImuCfg, TiledCameraCfg
@@ -221,11 +220,10 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
-    # Uses ContactSensor.data.force_matrix_w (filtered against ground + gates) so the
-    # internal articulation phantom is excluded by construction. 1 N is plenty.
+    # Sim 5.1 ContactSensor phantoms pollute both net_forces_w and force_matrix_w on this
+    # asset (see mdp.crash_contact docstring). Fall back to a ground-altitude check.
     collision = DoneTerm(
-        func=mdp.crash_contact,
-        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 1.0},
+        func=mdp.ground_crash, params={"z_threshold": 0.1}
     )
 
 

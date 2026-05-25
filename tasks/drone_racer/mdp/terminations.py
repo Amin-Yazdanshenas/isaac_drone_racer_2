@@ -24,23 +24,34 @@ def crash_contact(
     threshold: float = 1.0,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("collision_sensor"),
 ) -> torch.Tensor:
-    """Crash detector using ContactSensor.data.force_matrix_w.
+    """Stub kept for backward compatibility. Sim 5.1 ContactSensor reports a
+    static phantom force on the drone body that pollutes both net_forces_w
+    and force_matrix_w (see ground_crash for the working approach).
 
-    Requires the ContactSensor to be configured with filter_prim_paths_expr.
-    force_matrix_w contains only the forces against those filtered prims
-    (ground, gates) so it excludes the internal articulation phantoms
-    (gravity/applied-wrench/gyroscopic) that pollute net_forces_w.
-
-    threshold (N): force magnitude on a filtered contact pair above which
-    we declare a crash. 1 N is plenty since the signal is clean.
+    Always returns False so this termination is effectively disabled.
     """
-    cs: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    fm = cs.data.force_matrix_w  # (N, B, F, 3)
-    if fm is None:
-        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
-    # max force magnitude across (bodies, filters) per env
-    f_mag = torch.norm(fm, dim=-1)  # (N, B, F)
-    return f_mag.amax(dim=(1, 2)) > threshold
+    del threshold, sensor_cfg  # unused
+    return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+
+def ground_crash(
+    env: ManagerBasedRLEnv,
+    z_threshold: float = 0.1,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Terminate when the drone body sinks below z_threshold (ground crash).
+
+    Sim 5.1's ContactSensor reports a constant phantom force on the drone body
+    in both net_forces_w and force_matrix_w, making contact-based collision
+    detection unusable. Falling back to a simple altitude check: any crash
+    eventually drives the body to ground level. Combined with flyaway (lateral)
+    and time_out (temporal), this covers all real failure modes.
+
+    z_threshold (m): below this the drone is considered crashed. 0.1 sits well
+    below the default reset spawn band (z ∈ [0.5, 1.5]) and any normal hover.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return asset.data.root_pos_w[:, 2] < z_threshold
 
 
 def flyaway(
