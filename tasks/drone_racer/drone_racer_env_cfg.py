@@ -205,11 +205,15 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
-    # Sim 5.1 ContactSensor reports a constant ~76 N phantom on the body even at rest.
-    # mdp.crash_contact snapshots that baseline at init and triggers on
-    # (current - baseline) > threshold so low-speed real bumps still fire.
+    # Filter to body only — props in Sim 5.1 carry stale contact data after a crash that
+    # never clears on reset, making them unusable. body has a stable ~76.7 N phantom
+    # which mdp.crash_contact subtracts. Real body impacts spike well above that.
     collision = DoneTerm(
-        func=mdp.crash_contact, params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 5.0}
+        func=mdp.crash_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg("collision_sensor", body_names=["body"]),
+            "threshold": 5.0,
+        },
     )
 
 
