@@ -283,11 +283,9 @@ class DroneRacerEnvCfg_PLAY(ManagerBasedRLEnvCfg):
         # Disable push robot events
         self.events.push_robot = None
 
-        # Respawn fix: without randomise_start the drone stays in its crashed pose on reset
-        # instead of being teleported to a gate, so the play loop visually loops forever.
-        # reset_base disabled so randomise_start is the only repositioner.
-        self.commands.target.randomise_start = True
-        self.events.reset_base = None
+        # Upstream PLAY behavior: leave randomise_start=None (default) so each reset puts the
+        # drone at the fixed reset_base pose (corner spawn) targeting gate 0. Predictable
+        # respawn instead of teleporting between random gates each crash.
 
         # Enable RGB alongside segmentation so the FPV visualization window can show both
         self.scene.tiled_camera.data_types = ["rgb", "semantic_segmentation"]
@@ -348,11 +346,8 @@ class DroneRacerEnvCfg_NoCam_PLAY(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         self.events.push_robot = None
 
-        # Respawn fix: without randomise_start the drone stays in its crashed pose on reset
-        # instead of being teleported to a gate, so the play loop visually loops forever.
-        # reset_base disabled so randomise_start is the only repositioner.
-        self.commands.target.randomise_start = True
-        self.events.reset_base = None
+        # Upstream PLAY behavior: leave randomise_start=None (default) and keep reset_base
+        # active so each crash drops the drone at the fixed corner spawn targeting gate 0.
 
         # Disable the camera entirely — NoCam play must run without --enable_cameras.
         # (use the camera task variants for FPV debug visualization.)
