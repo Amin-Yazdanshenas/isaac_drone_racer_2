@@ -14,6 +14,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, ImuCfg, TiledCameraCfg
@@ -51,23 +52,7 @@ class DroneRacerSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = FIVE_IN_DRONE.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # sensors
-    # Contact sensor restricted to the drone body (props in Sim 5.1 carry stale data).
-    # filter_prim_paths_expr makes PhysX populate force_matrix_w with ONLY the listed prims;
-    # each entry must match exactly 1 prim PER env, so the 7 gates need separate entries.
-    collision_sensor: ContactSensorCfg = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/body",
-        filter_prim_paths_expr=[
-            "/World/Ground",
-            "/World/envs/env_.*/Gate_1",
-            "/World/envs/env_.*/Gate_2",
-            "/World/envs/env_.*/Gate_3",
-            "/World/envs/env_.*/Gate_4",
-            "/World/envs/env_.*/Gate_5",
-            "/World/envs/env_.*/Gate_6",
-            "/World/envs/env_.*/Gate_7",
-        ],
-        debug_vis=False,
-    )
+    collision_sensor: ContactSensorCfg = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", debug_vis=False)
     imu = ImuCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
     tiled_camera: TiledCameraCfg = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/body/camera",
@@ -220,10 +205,9 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
-    # Sim 5.1 ContactSensor phantoms pollute both net_forces_w and force_matrix_w on this
-    # asset (see mdp.crash_contact docstring). Fall back to a ground-altitude check.
     collision = DoneTerm(
-        func=mdp.ground_crash, params={"z_threshold": 0.1}
+        func=mdp.illegal_contact,
+        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 1.0},
     )
 
 
