@@ -305,9 +305,15 @@ def main():
                     _pre_cs = env.unwrapped.scene["collision_sensor"]
                     _pre_f = _pre_cs.data.net_forces_w[0].clone() if _pre_cs.data.net_forces_w is not None else None
                     _pre_body_names = list(_pre_cs.body_names)
+                    _pre_fm = _pre_cs.data.force_matrix_w
+                    _pre_fm_info = None
+                    if _pre_fm is not None:
+                        fm_mag = torch.norm(_pre_fm[0], dim=-1)  # (B, F)
+                        _pre_fm_info = (tuple(_pre_fm.shape), float(fm_mag.max().item()))
                 except Exception:
                     _pre_pos = _pre_vel = _pre_f = None
                     _pre_body_names = []
+                    _pre_fm_info = None
 
             # env stepping
             obs, rew, terminated, truncated, info = env.step(actions)
@@ -327,7 +333,8 @@ def main():
                     f_mag = torch.norm(_pre_f, dim=-1)
                     top_pairs = [(_pre_body_names[i], float(f_mag[i].item())) for i in range(len(_pre_body_names)) if f_mag[i].item() > 0.001]
                 print(
-                    f"[RESET] term={term_dict} | pre_pos={pos} pre_vel={vel} | contacts(pre)={top_pairs}"
+                    f"[RESET] term={term_dict} | pre_pos={pos} pre_vel={vel} "
+                    f"| net={top_pairs} | force_matrix={_pre_fm_info}"
                 )
             except Exception as exc:
                 print(f"[RESET] (diag failed: {exc!r})")
