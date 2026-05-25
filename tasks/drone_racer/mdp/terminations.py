@@ -19,61 +19,28 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-# Per-body static phantom forces (N) reported by Sim 5.1 ContactSensor at rest.
-# Indexed by body name. Anything not listed defaults to 0 (no subtraction).
-# Body phantom: gravity/applied-wrench accounting on the drone body.
-# Prop phantoms: gyroscopic forces from the spinning motors (200 rad/s init).
-_PHANTOM_FORCE_BY_BODY: dict[str, float] = {
-    "body": 76.71774,
-    "prop1": 21.52437,
-    "prop2": 21.52437,
-    "prop3": 21.52437,
-    "prop4": 21.52437,
-}
-
-
 def crash_contact(
     env: ManagerBasedRLEnv,
-    threshold: float = 5.0,
-    min_speed: float = 0.3,
+    threshold: float = 1.0,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("collision_sensor"),
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Crash detector: contact force delta > threshold AND drone moving > min_speed.
+    """Crash detector using ContactSensor.data.force_matrix_w.
 
-    Isaac Sim 5.1's ContactSensor reports phantom forces on the drone bodies
-    that drift after each crash (body baseline 76.7 -> 106 -> ... never clears).
-    Velocity gating sidesteps the unreliable absolute force: real impacts only
-    happen when the drone is moving. Phantom-only resets have vel=0 -> no fire.
+    Requires the ContactSensor to be configured with filter_prim_paths_expr.
+    force_matrix_w contains only the forces against those filtered prims
+    (ground, gates) so it excludes the internal articulation phantoms
+    (gravity/applied-wrench/gyroscopic) that pollute net_forces_w.
 
-    threshold (N): contact force above phantom baseline. Combined with the speed
-    gate, can be small (5 N) without false-positive at rest.
-    min_speed (m/s): below this the drone is considered at rest; collision is
-    ignored. Hover noise is typically < 0.1 m/s.
+    threshold (N): force magnitude on a filtered contact pair above which
+    we declare a crash. 1 N is plenty since the signal is clean.
     """
     cs: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    forces = cs.data.net_forces_w  # (N, B, 3)
-    if forces is None:
+    fm = cs.data.force_matrix_w  # (N, B, F, 3)
+    if fm is None:
         return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
-    f_mag = torch.norm(forces, dim=-1)  # (N, B)
-
-    phantom = torch.tensor(
-        [_PHANTOM_FORCE_BY_BODY.get(name, 0.0) for name in cs.body_names],
-        device=f_mag.device,
-        dtype=f_mag.dtype,
-    )  # (B,)
-    delta = f_mag - phantom
-
-    body_ids = sensor_cfg.body_ids
-    if body_ids is not None:
-        delta = delta[:, body_ids]
-    contact_hit = (delta > threshold).any(dim=1)
-
-    asset: RigidObject = env.scene[asset_cfg.name]
-    speed = torch.norm(asset.data.root_lin_vel_w, dim=-1)
-    moving = speed > min_speed
-
-    return contact_hit & moving
+    # max force magnitude across (bodies, filters) per env
+    f_mag = torch.norm(fm, dim=-1)  # (N, B, F)
+    return f_mag.amax(dim=(1, 2)) > threshold
 
 
 def flyaway(

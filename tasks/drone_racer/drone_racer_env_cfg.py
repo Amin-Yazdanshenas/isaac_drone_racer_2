@@ -52,7 +52,15 @@ class DroneRacerSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = FIVE_IN_DRONE.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # sensors
-    collision_sensor: ContactSensorCfg = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", debug_vis=False)
+    # Contact sensor restricted to the drone body (props in Sim 5.1 carry stale data after
+    # a crash that never clears). filter_prim_paths_expr makes PhysX populate
+    # force_matrix_w with ONLY contacts against ground + gates — net_forces_w still includes
+    # all internal articulation phantoms, so the termination reads force_matrix_w instead.
+    collision_sensor: ContactSensorCfg = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/body",
+        filter_prim_paths_expr=["/World/Ground", "/World/envs/env_.*/Gate_.*"],
+        debug_vis=False,
+    )
     imu = ImuCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
     tiled_camera: TiledCameraCfg = TiledCameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/body/camera",
@@ -205,15 +213,11 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
-    # Filter to body only — props in Sim 5.1 carry stale contact data after a crash that
-    # never clears on reset, making them unusable. body has a stable ~76.7 N phantom
-    # which mdp.crash_contact subtracts. Real body impacts spike well above that.
+    # Uses ContactSensor.data.force_matrix_w (filtered against ground + gates) so the
+    # internal articulation phantom is excluded by construction. 1 N is plenty.
     collision = DoneTerm(
         func=mdp.crash_contact,
-        params={
-            "sensor_cfg": SceneEntityCfg("collision_sensor", body_names=["body"]),
-            "threshold": 5.0,
-        },
+        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 1.0},
     )
 
 
