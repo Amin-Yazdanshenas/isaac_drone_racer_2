@@ -297,25 +297,37 @@ def main():
             # - single-agent (deterministic) actions
             else:
                 actions = outputs[-1].get("mean_actions", outputs[0])
+            # Capture pre-step state for diagnostics.
+            if args_cli.num_envs == 1:
+                try:
+                    _pre_pos = env.unwrapped.scene["robot"].data.root_pos_w[0].clone()
+                    _pre_vel = env.unwrapped.scene["robot"].data.root_lin_vel_w[0].clone()
+                    _pre_cs = env.unwrapped.scene["collision_sensor"]
+                    _pre_f = _pre_cs.data.net_forces_w[0].clone() if _pre_cs.data.net_forces_w is not None else None
+                    _pre_body_names = list(_pre_cs.body_names)
+                except Exception:
+                    _pre_pos = _pre_vel = _pre_f = None
+                    _pre_body_names = []
+
             # env stepping
             obs, rew, terminated, truncated, info = env.step(actions)
 
-        # Diagnostic: print which termination fired, current pos, vel, gate idx.
-        # Helps debug "drone respawns but doesn't fly" loops.
+        # Diagnostic: dump pre-step (pre-reset) state on every reset.
         if (terminated.any() or truncated.any()) and args_cli.num_envs == 1:
             try:
                 term_mgr = env.unwrapped.termination_manager
-                pos = env.unwrapped.scene["robot"].data.root_pos_w[0].cpu().tolist()
-                vel = env.unwrapped.scene["robot"].data.root_lin_vel_w[0].cpu().tolist()
-                cmd = env.unwrapped.command_manager.get_term("target")
-                gate_idx = int(cmd.next_gate_idx[0].item())
                 term_dict = {}
                 for name in term_mgr.active_terms:
                     val = term_mgr.get_term(name)
                     term_dict[name] = bool(val[0].item()) if val.numel() else None
+                pos = _pre_pos.cpu().tolist() if _pre_pos is not None else None
+                vel = _pre_vel.cpu().tolist() if _pre_vel is not None else None
+                top_pairs = []
+                if _pre_f is not None:
+                    f_mag = torch.norm(_pre_f, dim=-1)
+                    top_pairs = [(_pre_body_names[i], float(f_mag[i].item())) for i in range(len(_pre_body_names)) if f_mag[i].item() > 0.001]
                 print(
-                    f"[RESET] term={term_dict} | pos=({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}) "
-                    f"vel=({vel[0]:.2f}, {vel[1]:.2f}, {vel[2]:.2f}) | next_gate_idx={gate_idx}"
+                    f"[RESET] term={term_dict} | pre_pos={pos} pre_vel={vel} | contacts(pre)={top_pairs}"
                 )
             except Exception as exc:
                 print(f"[RESET] (diag failed: {exc!r})")
