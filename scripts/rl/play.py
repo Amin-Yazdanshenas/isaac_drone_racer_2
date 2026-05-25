@@ -297,47 +297,8 @@ def main():
             # - single-agent (deterministic) actions
             else:
                 actions = outputs[-1].get("mean_actions", outputs[0])
-            # Capture pre-step state for diagnostics.
-            if args_cli.num_envs == 1:
-                try:
-                    _pre_pos = env.unwrapped.scene["robot"].data.root_pos_w[0].clone()
-                    _pre_vel = env.unwrapped.scene["robot"].data.root_lin_vel_w[0].clone()
-                    _pre_cs = env.unwrapped.scene["collision_sensor"]
-                    _pre_f = _pre_cs.data.net_forces_w[0].clone() if _pre_cs.data.net_forces_w is not None else None
-                    _pre_body_names = list(_pre_cs.body_names)
-                    _pre_fm = _pre_cs.data.force_matrix_w
-                    _pre_fm_info = None
-                    if _pre_fm is not None:
-                        fm_mag = torch.norm(_pre_fm[0], dim=-1)  # (B, F)
-                        _pre_fm_info = (tuple(_pre_fm.shape), float(fm_mag.max().item()))
-                except Exception:
-                    _pre_pos = _pre_vel = _pre_f = None
-                    _pre_body_names = []
-                    _pre_fm_info = None
-
             # env stepping
             obs, rew, terminated, truncated, info = env.step(actions)
-
-        # Diagnostic: dump pre-step (pre-reset) state on every reset.
-        if (terminated.any() or truncated.any()) and args_cli.num_envs == 1:
-            try:
-                term_mgr = env.unwrapped.termination_manager
-                term_dict = {}
-                for name in term_mgr.active_terms:
-                    val = term_mgr.get_term(name)
-                    term_dict[name] = bool(val[0].item()) if val.numel() else None
-                pos = _pre_pos.cpu().tolist() if _pre_pos is not None else None
-                vel = _pre_vel.cpu().tolist() if _pre_vel is not None else None
-                top_pairs = []
-                if _pre_f is not None:
-                    f_mag = torch.norm(_pre_f, dim=-1)
-                    top_pairs = [(_pre_body_names[i], float(f_mag[i].item())) for i in range(len(_pre_body_names)) if f_mag[i].item() > 0.001]
-                print(
-                    f"[RESET] term={term_dict} | pre_pos={pos} pre_vel={vel} "
-                    f"| net={top_pairs} | force_matrix={_pre_fm_info}"
-                )
-            except Exception as exc:
-                print(f"[RESET] (diag failed: {exc!r})")
 
         if fpv_camera is not None:
             try:
