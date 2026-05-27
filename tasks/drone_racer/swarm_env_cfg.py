@@ -76,18 +76,64 @@ class DroneRacerSwarmSceneCfg(InteractiveSceneCfg):
 
 
 # --------------------------------------------------------------------------
+# Module-level configclass shells (must be top-level so they pickle).
+# --------------------------------------------------------------------------
+
+
+@configclass
+class _SwarmActionsCfg:
+    pass
+
+
+@configclass
+class _SwarmCommandsCfg:
+    pass
+
+
+@configclass
+class _SwarmEventCfg:
+    pass
+
+
+@configclass
+class _SwarmRewardsCfg:
+    pass
+
+
+@configclass
+class _SwarmTerminationsCfg:
+    pass
+
+
+@configclass
+class _SwarmPolicyCfg(ObsGroup):
+    def __post_init__(self) -> None:
+        self.enable_corruption = False
+        self.concatenate_terms = True
+
+
+@configclass
+class _SwarmCriticCfg(ObsGroup):
+    def __post_init__(self) -> None:
+        self.enable_corruption = False
+        self.concatenate_terms = True
+
+
+@configclass
+class _SwarmObsCfg:
+    policy: _SwarmPolicyCfg = None
+    critic: _SwarmCriticCfg | None = None
+
+
+# --------------------------------------------------------------------------
 # Action / command / event factories
 # --------------------------------------------------------------------------
 
 
-def _build_actions(num_drones: int, use_ctbr: bool) -> "ActionsCfgLike":
+def _build_actions(num_drones: int, use_ctbr: bool) -> _SwarmActionsCfg:
     """Returns a configclass instance with N action terms named control_action_i."""
 
-    @configclass
-    class _ActionsCfg:
-        pass
-
-    cfg = _ActionsCfg()
+    cfg = _SwarmActionsCfg()
     cls = mdp.CTBRActionCfg if use_ctbr else mdp.ControlActionCfg
     for i in range(num_drones):
         if use_ctbr:
@@ -97,12 +143,8 @@ def _build_actions(num_drones: int, use_ctbr: bool) -> "ActionsCfgLike":
     return cfg
 
 
-def _build_commands(num_drones: int) -> "CommandsCfgLike":
-    @configclass
-    class _CommandsCfg:
-        pass
-
-    cfg = _CommandsCfg()
+def _build_commands(num_drones: int) -> _SwarmCommandsCfg:
+    cfg = _SwarmCommandsCfg()
     for i in range(num_drones):
         setattr(
             cfg,
@@ -122,14 +164,10 @@ def _build_commands(num_drones: int) -> "CommandsCfgLike":
     return cfg
 
 
-def _build_events(num_drones: int) -> "EventCfgLike":
+def _build_events(num_drones: int) -> _SwarmEventCfg:
     """Per-drone reset_base events spaced laterally so drones don't overlap."""
 
-    @configclass
-    class _EventCfg:
-        pass
-
-    cfg = _EventCfg()
+    cfg = _SwarmEventCfg()
     # Lateral lane per drone. Pose range remains tight so the spawn box covers all drones.
     for i in range(num_drones):
         y_offset = (i - (num_drones - 1) / 2.0) * 0.6  # spread along Y, centered
@@ -175,21 +213,13 @@ def _build_events(num_drones: int) -> "EventCfgLike":
 # --------------------------------------------------------------------------
 
 
-def _build_observations(num_drones: int, include_camera: bool) -> "ObsCfgLike":
+def _build_observations(num_drones: int, include_camera: bool) -> _SwarmObsCfg:
     """Policy = full-state of all drones (centralized — V1). Critic = same
     plus the env-level state. NoCam variant skips the FPV term; with-camera
     variant flattens each drone's FPV + IMU into the policy obs."""
 
-    @configclass
-    class _PolicyCfg(ObsGroup):
-        pass
-
-    @configclass
-    class _CriticCfg(ObsGroup):
-        pass
-
-    policy = _PolicyCfg()
-    critic = _CriticCfg()
+    policy = _SwarmPolicyCfg()
+    critic = _SwarmCriticCfg()
 
     for i in range(num_drones):
         if include_camera:
@@ -245,22 +275,7 @@ def _build_observations(num_drones: int, include_camera: bool) -> "ObsCfgLike":
             func=mdp.last_action, params={"action_name": f"control_action_{i}"}
         ))
 
-    def _policy_post(self):
-        self.enable_corruption = False
-        self.concatenate_terms = True
-
-    def _critic_post(self):
-        self.enable_corruption = False
-        self.concatenate_terms = True
-
-    policy.__post_init__ = _policy_post.__get__(policy, type(policy))
-    critic.__post_init__ = _critic_post.__get__(critic, type(critic))
-
-    @configclass
-    class _ObsCfg:
-        pass
-
-    obs = _ObsCfg()
+    obs = _SwarmObsCfg()
     obs.policy = policy
     if include_camera:
         obs.critic = critic
@@ -269,12 +284,8 @@ def _build_observations(num_drones: int, include_camera: bool) -> "ObsCfgLike":
     return obs
 
 
-def _build_rewards(num_drones: int) -> "RewardsCfgLike":
-    @configclass
-    class _RewardsCfg:
-        pass
-
-    cfg = _RewardsCfg()
+def _build_rewards(num_drones: int) -> _SwarmRewardsCfg:
+    cfg = _SwarmRewardsCfg()
     for i in range(num_drones):
         setattr(cfg, f"terminating_{i}", RewTerm(func=mdp.is_terminated, weight=-500.0 / num_drones))
         setattr(cfg, f"ang_vel_{i}", RewTerm(
@@ -304,12 +315,8 @@ def _build_rewards(num_drones: int) -> "RewardsCfgLike":
     return cfg
 
 
-def _build_terminations(num_drones: int) -> "TerminationsCfgLike":
-    @configclass
-    class _TerminationsCfg:
-        pass
-
-    cfg = _TerminationsCfg()
+def _build_terminations(num_drones: int) -> _SwarmTerminationsCfg:
+    cfg = _SwarmTerminationsCfg()
     cfg.time_out = DoneTerm(func=mdp.time_out, time_out=True)
     for i in range(num_drones):
         setattr(cfg, f"flyaway_{i}", DoneTerm(
