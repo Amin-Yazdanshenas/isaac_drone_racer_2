@@ -196,13 +196,23 @@ def _build_events(num_drones: int) -> _SwarmEventCfg:
                 },
             ),
         )
-    # Shared interval-mode push event hits every drone via wildcard.
-    cfg.push_robot = EventTerm(
-        func=mdp.apply_external_force_torque,
-        mode="interval",
-        interval_range_s=(0.0, 0.2),
-        params={"force_range": (-0.1, 0.1), "torque_range": (-0.05, 0.05)},
-    )
+    # Per-drone interval push (apply_external_force_torque defaults to asset "robot",
+    # which doesn't exist in swarm scenes — supply each drone explicitly).
+    for i in range(num_drones):
+        setattr(
+            cfg,
+            f"push_robot_{i}",
+            EventTerm(
+                func=mdp.apply_external_force_torque,
+                mode="interval",
+                interval_range_s=(0.0, 0.2),
+                params={
+                    "force_range": (-0.1, 0.1),
+                    "torque_range": (-0.05, 0.05),
+                    "asset_cfg": SceneEntityCfg(f"drone_{i}"),
+                },
+            ),
+        )
     return cfg
 
 
@@ -359,6 +369,12 @@ class _SwarmEnvCfgBase(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         populate_swarm_scene(self.scene, self.num_drones, self.include_camera)
 
+        # PhysX buffer bump: N drones × M envs blows past the default contact-patch
+        # buffer at 4096 envs × 4 drones (saw "Patch buffer overflow ... at least 401408").
+        # 2**20 ~ 1.05M patches gives headroom up to ~8 drones × 4096 envs.
+        self.sim.physx.gpu_max_rigid_patch_count = 2**20
+        self.sim.physx.gpu_max_rigid_contact_count = 2**24
+
         self.actions = _build_actions(self.num_drones, self.use_ctbr)
         self.commands = _build_commands(self.num_drones)
         self.events = _build_events(self.num_drones)
@@ -395,12 +411,11 @@ class DroneRacerSwarmEnvCfg_PLAY(DroneRacerSwarmEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # PLAY: corner spawn, no push, no random gate.
+        # PLAY: corner spawn (reset_base events left active), no push, no random gate.
+        self.events = _build_events(self.num_drones)
         for i in range(self.num_drones):
             getattr(self.commands, f"target_{i}").randomise_start = None
-            # Re-enable reset_base events from the builder defaults.
-            self.events = _build_events(self.num_drones)
-            self.events.push_robot = None
+            setattr(self.events, f"push_robot_{i}", None)
 
 
 @configclass
@@ -419,10 +434,10 @@ class DroneRacerSwarmEnvCfg_NoCam_PLAY(DroneRacerSwarmEnvCfg_NoCam):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        self.events = _build_events(self.num_drones)
         for i in range(self.num_drones):
             getattr(self.commands, f"target_{i}").randomise_start = None
-            self.events = _build_events(self.num_drones)
-            self.events.push_robot = None
+            setattr(self.events, f"push_robot_{i}", None)
 
 
 @configclass
