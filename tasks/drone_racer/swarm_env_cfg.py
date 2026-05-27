@@ -41,11 +41,9 @@ from .track_generator import generate_track
 
 @configclass
 class DroneRacerSwarmSceneCfg(InteractiveSceneCfg):
-    """Scene with N drones + per-drone sensors. N read from cfg's num_drones;
-    drones / sensors injected in __post_init__."""
-
-    num_drones: int = 4
-    include_camera: bool = True
+    """Scene with N drones + per-drone sensors. Drones / sensors are NOT declared
+    as fields here — they're injected at runtime by populate_swarm_scene() so
+    InteractiveScene's asset discovery doesn't trip on non-asset attrs."""
 
     ground = AssetBaseCfg(prim_path="/World/Ground", spawn=sim_utils.GroundPlaneCfg())
     track: RigidObjectCollectionCfg = generate_track(
@@ -64,15 +62,15 @@ class DroneRacerSwarmSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=3000.0),
     )
 
-    def __post_init__(self) -> None:
-        # Spawn N drones + per-drone sensors. Each drone gets a unique prim
-        # path under the env. Sensors are body-only (per the Sim 5.1 fix).
-        for i in range(self.num_drones):
-            setattr(self, f"drone_{i}", make_drone_articulation(i))
-            setattr(self, f"collision_sensor_{i}", make_collision_sensor(i))
-            setattr(self, f"imu_{i}", make_imu_sensor(i))
-            if self.include_camera:
-                setattr(self, f"camera_{i}", make_tiled_camera(i))
+
+def populate_swarm_scene(scene_cfg: DroneRacerSwarmSceneCfg, num_drones: int, include_camera: bool) -> None:
+    """Inject N drone articulations + sensors onto an already-built scene cfg."""
+    for i in range(num_drones):
+        setattr(scene_cfg, f"drone_{i}", make_drone_articulation(i))
+        setattr(scene_cfg, f"collision_sensor_{i}", make_collision_sensor(i))
+        setattr(scene_cfg, f"imu_{i}", make_imu_sensor(i))
+        if include_camera:
+            setattr(scene_cfg, f"camera_{i}", make_tiled_camera(i))
 
 
 # --------------------------------------------------------------------------
@@ -359,9 +357,7 @@ class _SwarmEnvCfgBase(ManagerBasedRLEnvCfg):
     terminations: object = None
 
     def __post_init__(self) -> None:
-        self.scene.num_drones = self.num_drones
-        self.scene.include_camera = self.include_camera
-        self.scene.__post_init__()
+        populate_swarm_scene(self.scene, self.num_drones, self.include_camera)
 
         self.actions = _build_actions(self.num_drones, self.use_ctbr)
         self.commands = _build_commands(self.num_drones)
