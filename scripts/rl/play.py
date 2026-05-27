@@ -209,6 +209,14 @@ def main():
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
+    # Swarm: tint each drone after the stage is built so they are visually distinct.
+    if hasattr(env_cfg, "num_drones") and env_cfg.num_drones > 1:
+        try:
+            from tasks.drone_racer.swarm_utils import recolor_drones
+            recolor_drones(env_cfg.scene.num_envs, env_cfg.num_drones)
+        except Exception as exc:
+            print(f"[INFO] recolor_drones skipped: {exc!r}")
+
     # Second viewport showing the drone's onboard camera (GUI mode only)
     if not args_cli.headless:
         try:
@@ -334,7 +342,10 @@ def main():
                     break
             logger.log(info["metrics"])
 
-    cv2.destroyAllWindows()
+    try:
+        cv2.destroyAllWindows()  # no-op on headless OpenCV builds (no GTK/Qt)
+    except cv2.error:
+        pass
     # close the simulator
     env.close()
 

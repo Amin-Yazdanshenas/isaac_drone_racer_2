@@ -41,10 +41,14 @@ agent:
   mini_batches: 4
   discount_factor: 0.99
   gae_lambda: 0.95
-  learning_rate: 1.0e-04
+  # LR softened (1e-4 -> 5e-5) and KL threshold widened (0.01 -> 0.02) so the
+  # KL-adaptive scheduler stops collapsing LR before the network has committed.
+  # Symptom from the first run: LR dropped 9.3e-4 -> 1.2e-4 in 100 updates and
+  # policy std rose 1.0 -> 1.76 (less certain over time).
+  learning_rate: 5.0e-05
   learning_rate_scheduler: KLAdaptiveLR
   learning_rate_scheduler_kwargs:
-    kl_threshold: 0.01
+    kl_threshold: 0.02
   observation_preprocessor: RunningStandardScaler
   observation_preprocessor_kwargs: null
   value_preprocessor: RunningStandardScaler

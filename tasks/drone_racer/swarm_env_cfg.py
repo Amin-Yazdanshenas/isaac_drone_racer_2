@@ -315,9 +315,11 @@ def _build_rewards(num_drones: int) -> _SwarmRewardsCfg:
             params={"command_name": f"target_{i}", "std": 0.5,
                     "asset_cfg": SceneEntityCfg(f"drone_{i}")},
         ))
+    # Soft pairwise penalty — drops from -50 -> -10 so the single-drone race
+    # reward dominates early training; ramp back up once gate-pass rate > 50%.
     cfg.drone_drone_collision = RewTerm(
         func=mdp.drone_drone_collision_penalty,
-        weight=-50.0,
+        weight=-10.0,
         params={"num_drones": num_drones, "safety_distance": 0.4},
     )
     return cfg

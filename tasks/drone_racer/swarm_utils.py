@@ -65,50 +65,57 @@ def make_tiled_camera(drone_idx: int) -> TiledCameraCfg:
 
 
 def recolor_drones(num_envs: int, num_drones: int) -> None:
-    """Apply a distinct preview-surface color to each drone's `body` prim.
-
-    Call AFTER the stage is built (e.g., from the env class's `_setup_scene`
-    post-hook or right after `gym.make` returns). Uses USD Preview Surface
-    so colors show in both ray-traced and rasterized viewports without
-    needing MDL.
+    """Apply a distinct color to each drone via UsdPreviewSurface material override
+    with strongerThanDescendants binding. Call AFTER the stage is built (after
+    gym.make returns) so the per-env drone prims exist.
     """
     try:
         import omni.usd
-        from pxr import Sdf, UsdShade, Gf
+        from pxr import Sdf, UsdShade, Gf, UsdGeom, Usd
     except ImportError:
-        # Not inside Isaac Sim — skip silently.
         return
 
     stage = omni.usd.get_context().get_stage()
     if stage is None:
+        print("[recolor_drones] no stage — skipping")
         return
 
+    applied = 0
+    skipped = 0
     for env_idx in range(num_envs):
         for i in range(num_drones):
             color = DRONE_PALETTE[i % len(DRONE_PALETTE)]
             drone_root = f"/World/envs/env_{env_idx}/Drone_{i}"
-            mat_root = f"{drone_root}/Looks"
-            mat_path = f"{mat_root}/DroneColor"
-            shader_path = f"{mat_path}/Shader"
+            drone_prim = stage.GetPrimAtPath(drone_root)
+            if not drone_prim.IsValid():
+                skipped += 1
+                continue
 
-            # Build or reuse material.
-            mat_prim = stage.GetPrimAtPath(mat_path)
-            if not mat_prim.IsValid():
-                stage.DefinePrim(Sdf.Path(mat_root), "Scope")
-                material = UsdShade.Material.Define(stage, Sdf.Path(mat_path))
-                shader = UsdShade.Shader.Define(stage, Sdf.Path(shader_path))
-                shader.CreateIdAttr("UsdPreviewSurface")
-                shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
-                shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
-                shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.6)
-                shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
-                material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
-            else:
-                material = UsdShade.Material(mat_prim)
+            mat_path = f"{drone_root}/Looks/DroneColor"
+            material = UsdShade.Material.Define(stage, Sdf.Path(mat_path))
+            shader = UsdShade.Shader.Define(stage, Sdf.Path(f"{mat_path}/Shader"))
+            shader.CreateIdAttr("UsdPreviewSurface")
+            shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
+            shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
+                Gf.Vec3f(color[0] * 0.4, color[1] * 0.4, color[2] * 0.4)
+            )
+            shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.6)
+            shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+            material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
 
-            # Bind to body link's mesh subtree.
-            for prim in stage.Traverse():
-                p = prim.GetPath().pathString
-                if p.startswith(f"{drone_root}/body") and prim.IsA(UsdShade.ConnectableAPI) is False:
-                    if prim.GetTypeName() in ("Mesh", "Xform"):
-                        UsdShade.MaterialBindingAPI(prim).Bind(material)
+            # Bind on the drone root with strongerThanDescendants — overrides every
+            # descendant material binding on the body/prop visual meshes.
+            UsdShade.MaterialBindingAPI.Apply(drone_prim).Bind(
+                material, bindingStrength=UsdShade.Tokens.strongerThanDescendants
+            )
+
+            # Also override every Mesh descendant explicitly in case the source USD
+            # binds materials at the mesh level (which beats the root's weakerThan).
+            for prim in Usd.PrimRange(drone_prim):
+                if UsdGeom.Mesh(prim):
+                    UsdShade.MaterialBindingAPI.Apply(prim).Bind(
+                        material, bindingStrength=UsdShade.Tokens.strongerThanDescendants
+                    )
+            applied += 1
+
+    print(f"[recolor_drones] applied={applied} skipped={skipped} drones across {num_envs} envs")

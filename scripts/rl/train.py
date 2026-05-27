@@ -174,6 +174,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
+    # Swarm: tint each drone after the stage is built so they are visually distinct.
+    if hasattr(env_cfg, "num_drones") and env_cfg.num_drones > 1:
+        try:
+            from tasks.drone_racer.swarm_utils import recolor_drones
+            recolor_drones(env_cfg.scene.num_envs, env_cfg.num_drones)
+        except Exception as exc:
+            print(f"[INFO] recolor_drones skipped: {exc!r}")
+
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
         env = multi_agent_to_single_agent(env)
