@@ -171,3 +171,25 @@ def ang_vel_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCf
     # extract the used quantities (to enable type-hinting)
     asset: RigidObject = env.scene[asset_cfg.name]
     return torch.sum(torch.square(asset.data.root_ang_vel_b), dim=1)
+
+
+def _stack_drone_positions(env: ManagerBasedRLEnv, num_drones: int) -> torch.Tensor:
+    """Helper: (num_envs, num_drones, 3) stack of root_pos_w across drone_0..drone_{N-1}."""
+    return torch.stack(
+        [env.scene[f"drone_{i}"].data.root_pos_w for i in range(num_drones)], dim=1
+    )
+
+
+def drone_drone_collision_penalty(
+    env: ManagerBasedRLEnv,
+    num_drones: int,
+    safety_distance: float = 0.3,
+) -> torch.Tensor:
+    """+1 per env when ANY pair of drones is within safety_distance (else 0). Use a
+    negative weight in the cfg (e.g., -10) to penalize swarm proximity. Pairwise
+    upper-triangle check; returns (num_envs,) float."""
+    positions = _stack_drone_positions(env, num_drones)  # (E, N, 3)
+    diff = positions.unsqueeze(2) - positions.unsqueeze(1)  # (E, N, N, 3)
+    dist = diff.norm(dim=-1)  # (E, N, N)
+    mask = torch.triu(torch.ones_like(dist, dtype=torch.bool), diagonal=1)
+    return ((dist < safety_distance) & mask).any(dim=(1, 2)).float()

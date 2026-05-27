@@ -18,6 +18,8 @@ parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--num_drones", type=int, default=None,
+                    help="Swarm: number of drones per env (Swarm-* tasks only).")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument(
@@ -174,6 +176,11 @@ def main():
     env_cfg = parse_env_cfg(
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
     )
+
+    # Swarm: rebuild env cfg with requested drone count.
+    if args_cli.num_drones is not None and hasattr(env_cfg, "num_drones"):
+        env_cfg.num_drones = args_cli.num_drones
+        env_cfg.__post_init__()
     try:
         experiment_cfg = load_cfg_from_registry(args_cli.task, f"skrl_{algorithm}_cfg_entry_point")
     except ValueError:

@@ -91,3 +91,25 @@ gym.register(
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_cfg_nocam_ctbr.yaml",
     },
 )
+
+# Swarm variants — N drones in one env, single PPO over concatenated state.
+# Default N=4 (set in cfg class); override via train.py / play.py --num_drones.
+for _swarm_id, _cfg_name in [
+    ("Isaac-Drone-Racer-Swarm-v0", "DroneRacerSwarmEnvCfg"),
+    ("Isaac-Drone-Racer-Swarm-Play-v0", "DroneRacerSwarmEnvCfg_PLAY"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-v0", "DroneRacerSwarmEnvCfg_NoCam"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_PLAY"),
+    ("Isaac-Drone-Racer-Swarm-CTBR-v0", "DroneRacerSwarmEnvCfg_CTBR"),
+    ("Isaac-Drone-Racer-Swarm-CTBR-Play-v0", "DroneRacerSwarmEnvCfg_CTBR_PLAY"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-CTBR-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-CTBR-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR_PLAY"),
+]:
+    gym.register(
+        id=_swarm_id,
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"{__name__}.swarm_env_cfg:{_cfg_name}",
+            "skrl_cfg_entry_point": f"{agents.__name__}:skrl_cfg_swarm.yaml",
+        },
+    )

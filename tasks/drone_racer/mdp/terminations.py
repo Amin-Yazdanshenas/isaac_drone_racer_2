@@ -78,3 +78,20 @@ def flyaway(
     # Compute distance
     distance_tensor = torch.linalg.norm(asset.data.root_pos_w - target_pos_tensor, dim=1)
     return distance_tensor > distance
+
+
+def drone_drone_collision(
+    env: ManagerBasedRLEnv,
+    num_drones: int,
+    safety_distance: float = 0.25,
+) -> torch.Tensor:
+    """Episode-ending pairwise drone-drone proximity check. Returns (num_envs,) bool.
+    Tighter than the reward-side safety_distance so the penalty has a band before
+    termination fires."""
+    positions = torch.stack(
+        [env.scene[f"drone_{i}"].data.root_pos_w for i in range(num_drones)], dim=1
+    )  # (E, N, 3)
+    diff = positions.unsqueeze(2) - positions.unsqueeze(1)
+    dist = diff.norm(dim=-1)
+    mask = torch.triu(torch.ones_like(dist, dtype=torch.bool), diagonal=1)
+    return ((dist < safety_distance) & mask).any(dim=(1, 2))
