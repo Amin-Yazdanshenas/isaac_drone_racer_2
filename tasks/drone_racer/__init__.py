@@ -94,15 +94,21 @@ gym.register(
 
 # Swarm variants — N drones in one env, single PPO over concatenated state.
 # Default N=4 (set in cfg class); override via train.py / play.py --num_drones.
-for _swarm_id, _cfg_name in [
-    ("Isaac-Drone-Racer-Swarm-v0", "DroneRacerSwarmEnvCfg"),
-    ("Isaac-Drone-Racer-Swarm-Play-v0", "DroneRacerSwarmEnvCfg_PLAY"),
-    ("Isaac-Drone-Racer-Swarm-NoCam-v0", "DroneRacerSwarmEnvCfg_NoCam"),
-    ("Isaac-Drone-Racer-Swarm-NoCam-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_PLAY"),
-    ("Isaac-Drone-Racer-Swarm-CTBR-v0", "DroneRacerSwarmEnvCfg_CTBR"),
-    ("Isaac-Drone-Racer-Swarm-CTBR-Play-v0", "DroneRacerSwarmEnvCfg_CTBR_PLAY"),
-    ("Isaac-Drone-Racer-Swarm-NoCam-CTBR-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR"),
-    ("Isaac-Drone-Racer-Swarm-NoCam-CTBR-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR_PLAY"),
+for _swarm_id, _cfg_name, _yaml in [
+    ("Isaac-Drone-Racer-Swarm-v0", "DroneRacerSwarmEnvCfg", "skrl_cfg_swarm.yaml"),
+    ("Isaac-Drone-Racer-Swarm-Play-v0", "DroneRacerSwarmEnvCfg_PLAY", "skrl_cfg_swarm.yaml"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-v0", "DroneRacerSwarmEnvCfg_NoCam", "skrl_cfg_swarm.yaml"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_PLAY", "skrl_cfg_swarm.yaml"),
+    ("Isaac-Drone-Racer-Swarm-CTBR-v0", "DroneRacerSwarmEnvCfg_CTBR", "skrl_cfg_swarm.yaml"),
+    ("Isaac-Drone-Racer-Swarm-CTBR-Play-v0", "DroneRacerSwarmEnvCfg_CTBR_PLAY", "skrl_cfg_swarm.yaml"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-CTBR-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR", "skrl_cfg_swarm.yaml"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-CTBR-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR_PLAY", "skrl_cfg_swarm.yaml"),
+    # Lite variants — RTX 3060 / 6 GB-friendly preset (smaller MLP, smaller rollout).
+    # Pair with --num_envs 32-128 and --num_drones 2-3.
+    ("Isaac-Drone-Racer-Swarm-NoCam-CTBR-Lite-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR", "skrl_cfg_swarm_lite.yaml"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-CTBR-Lite-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR_PLAY", "skrl_cfg_swarm_lite.yaml"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-Lite-v0", "DroneRacerSwarmEnvCfg_NoCam", "skrl_cfg_swarm_lite.yaml"),
+    ("Isaac-Drone-Racer-Swarm-NoCam-Lite-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_PLAY", "skrl_cfg_swarm_lite.yaml"),
 ]:
     gym.register(
         id=_swarm_id,
@@ -110,6 +116,6 @@ for _swarm_id, _cfg_name in [
         disable_env_checker=True,
         kwargs={
             "env_cfg_entry_point": f"{__name__}.swarm_env_cfg:{_cfg_name}",
-            "skrl_cfg_entry_point": f"{agents.__name__}:skrl_cfg_swarm.yaml",
+            "skrl_cfg_entry_point": f"{agents.__name__}:{_yaml}",
         },
     )

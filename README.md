@@ -140,6 +140,45 @@ python3 scripts/rl/play.py --task Isaac-Drone-Racer-CTBR-Play-v0 --enable_camera
 
 Checkpoints: `logs/skrl/drone_racer/` and `logs/skrl/drone_racer_ctbr/`.
 
+### Swarm racing — N drones per env
+
+`Isaac-Drone-Racer-Swarm{,-NoCam,-CTBR,-NoCam-CTBR}{,-Play}-v0` spawn N drones in one shared env. `--num_drones N` overrides the default (4). Single-PPO over the concatenated state of all drones. Per-drone progress / gate / collision rewards summed; new pairwise drone-drone penalty + termination.
+
+```bash
+# RTX 4090 — 4 drones, no camera, CTBR
+python3 scripts/rl/train.py --task Isaac-Drone-Racer-Swarm-NoCam-CTBR-v0 \
+    --headless --num_envs 256 --num_drones 4
+python3 scripts/rl/play.py --task Isaac-Drone-Racer-Swarm-NoCam-CTBR-Play-v0 \
+    --num_envs 1 --num_drones 4
+```
+
+### RTX 3060 / 6 GB-friendly presets — Swarm Lite
+
+`-Lite-v0` task IDs use `skrl_cfg_swarm_lite.yaml` (smaller MLP, smaller rollout). Required: `--headless`. Recommended: 2 drones, 32–128 envs.
+
+```bash
+# RTX 3060 6 GB — 2 drones, 64 envs
+python3 scripts/rl/train.py --task Isaac-Drone-Racer-Swarm-NoCam-CTBR-Lite-v0 \
+    --headless --num_envs 64 --num_drones 2
+
+# Play
+python3 scripts/rl/play.py --task Isaac-Drone-Racer-Swarm-NoCam-CTBR-Lite-Play-v0 \
+    --num_envs 1 --num_drones 2
+
+# RTX 3060 12 GB — push to 3 drones / 128 envs
+python3 scripts/rl/train.py --task Isaac-Drone-Racer-Swarm-NoCam-CTBR-Lite-v0 \
+    --headless --num_envs 128 --num_drones 3
+```
+
+| GPU | Task | num_envs | num_drones |
+|-----|------|----------|------------|
+| RTX 3060 (6 GB) | `*-NoCam-CTBR-Lite-v0` | 32–64 | 2 |
+| RTX 3060 (12 GB) | `*-NoCam-CTBR-Lite-v0` | 64–128 | 2–3 |
+| RTX 4070 / 4080 | `*-NoCam-CTBR-v0` | 128–256 | 3–4 |
+| RTX 4090 | `*-NoCam-CTBR-v0` | 256–512 | 4–6 |
+
+Single-drone tasks on 3060: always pair with `--headless` and `--num_envs 1024` (or lower) — see "GPU VRAM" below for the 4–5 GB renderer floor in GUI mode.
+
 > [!NOTE]
 > Extra CLI args from [AppLauncher](https://isaac-sim.github.io/IsaacLab/main/source/tutorials/00_sim/launch_app.html) work. Hydra overrides also work — e.g. disable the motor first-order lag:
 > ```bash
