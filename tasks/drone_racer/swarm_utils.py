@@ -103,24 +103,22 @@ def recolor_drones(num_envs: int, num_drones: int) -> None:
             shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
             material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
 
-            # Only touch visual prims — DO NOT walk body/collisions or *visuals
-            # cousin paths like prop1/collisions etc. Touching collision subtree
-            # invalidates the PhysX tensor view ("simulationView was invalidated"
-            # then later set_root_transforms fails).
-            def _force_bind(prim):
-                api = UsdShade.MaterialBindingAPI.Apply(prim)
-                api.UnbindAllBindings()
-                api.Bind(material, bindingStrength=UsdShade.Tokens.strongerThanDescendants)
+            # Target ONLY the known visual Xform paths — body/visuals and the four
+            # prop*/visuals. Walking every Imageable descendant (or calling
+            # UnbindAllBindings on the body Xform itself) invalidates the PhysX
+            # tensor view because Isaac Sim has already cached shape views on those
+            # rigid-body Xforms.
+            visual_paths = [f"{drone_root}/body/visuals"]
+            for p in range(1, 5):  # prop1..prop4
+                visual_paths.append(f"{drone_root}/prop{p}/visuals")
 
-            for prim in Usd.PrimRange(drone_prim):
-                if prim.IsA(UsdShade.Material) or prim.IsA(UsdShade.Shader):
+            for vp in visual_paths:
+                vp_prim = stage.GetPrimAtPath(vp)
+                if not vp_prim.IsValid():
                     continue
-                path = prim.GetPath().pathString
-                if "/collisions" in path:
-                    continue
-                if not UsdGeom.Imageable(prim):
-                    continue
-                _force_bind(prim)
+                UsdShade.MaterialBindingAPI.Apply(vp_prim).Bind(
+                    material, bindingStrength=UsdShade.Tokens.strongerThanDescendants
+                )
             applied += 1
 
     print(f"[recolor_drones] applied={applied} skipped={skipped} drones across {num_envs} envs")
