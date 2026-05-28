@@ -43,45 +43,16 @@ _SOURCE_USD = os.path.join(_ASSET_DIR, "5_in_drone.usd")
 _BASE_DAE = os.path.join(_ASSET_DIR, "meshes", "base_link.dae")
 
 
-def _collect_pink_material_names() -> set[str]:
-    """Parse base_link.dae and return material names whose diffuse RGB is
-    pink/magenta — the arm color in the source mesh. Used to selectively
-    retint only the arms (and any prim originally painted that color) without
-    touching frame/motors/camera mount.
+def _collect_arm_material_names() -> set[str]:
+    """Return the source material name(s) bound to the drone's 4 arms.
 
-    Pink test: high R, low G, mid-to-high B. Catches Blender's "Material.00x"
-    default magenta (1, 0, 1) and the F_a306... arm material (0.913, 0.024, 0.231).
+    Verified by bbox inspection of /visuals/body/base_link/mesh subsets:
+    Material_001..004 are the four arms of the X-frame quad (each at a ±X,±Z
+    corner, ~0.11 m from origin, thin Y plate). All four GeomSubsets share a
+    single source material "Material_004", so binding the tint there recolors
+    all arms.
     """
-    import xml.etree.ElementTree as ET
-
-    pink: set[str] = set()
-    try:
-        ns = "{http://www.collada.org/2005/11/COLLADASchema}"
-        tree = ET.parse(_BASE_DAE)
-        root = tree.getroot()
-        effects = {}
-        for eff in root.iter(ns + "effect"):
-            for col in eff.iter(ns + "color"):
-                if col.get("sid") == "diffuse":
-                    vals = [float(x) for x in col.text.split()][:3]
-                    effects[eff.get("id")] = tuple(vals)
-                    break
-        for mat in root.iter(ns + "material"):
-            ie = mat.find(ns + "instance_effect")
-            if ie is None:
-                continue
-            rgb = effects.get(ie.get("url").lstrip("#"))
-            if rgb is None:
-                continue
-            r, g, b = rgb
-            if r > 0.85 and g < 0.10:
-                pink.add(mat.get("name"))
-    except Exception as exc:
-        print(f"[swarm] _collect_pink_material_names failed: {exc!r} — falling back to default set")
-        # Safe fallback derived from manual DAE inspection.
-        pink = {"Material.001", "Material.002", "Material.003", "Material.004",
-                "F_a30655cccfa642a981ca20a073a43b72"}
-    return pink
+    return {"Material_004"}
 
 
 def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
@@ -174,7 +145,7 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
     # keep their stock material. Pink set is determined by parsing the source
     # DAE diffuse colors: bright magenta (Blender default "Material.00x" =
     # (1,0,1)) plus the one red-pink F_a306... arm material.
-    pink_material_names = _collect_pink_material_names()
+    arm_material_names = _collect_arm_material_names()
     body_prim = src_stage.GetPrimAtPath(body_src)
     if body_prim.IsValid():
         for child in Usd.PrimRange(body_prim):
@@ -188,7 +159,7 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
             if not targets:
                 continue
             mat_name = str(targets[0]).rsplit("/", 1)[-1]
-            if mat_name not in pink_material_names:
+            if mat_name not in arm_material_names:
                 continue
             rest = str(child.GetPath())[len(body_src):]
             target_relpaths.append(body_dst + rest)
