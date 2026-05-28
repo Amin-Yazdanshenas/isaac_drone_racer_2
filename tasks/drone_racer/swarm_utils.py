@@ -103,23 +103,24 @@ def recolor_drones(num_envs: int, num_drones: int) -> None:
             shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
             material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
 
-            # The body/visuals subtree references an external USD with its OWN
-            # material binding (the pink default). Bind on:
-            #   (a) drone root           — catches future descendants
-            #   (b) every Imageable prim — Xform/Mesh/Scope inside referenced layers
-            # Clear any existing binding first so the referenced-layer one cannot win.
+            # Only touch visual prims — DO NOT walk body/collisions or *visuals
+            # cousin paths like prop1/collisions etc. Touching collision subtree
+            # invalidates the PhysX tensor view ("simulationView was invalidated"
+            # then later set_root_transforms fails).
             def _force_bind(prim):
                 api = UsdShade.MaterialBindingAPI.Apply(prim)
                 api.UnbindAllBindings()
                 api.Bind(material, bindingStrength=UsdShade.Tokens.strongerThanDescendants)
 
-            _force_bind(drone_prim)
             for prim in Usd.PrimRange(drone_prim):
-                # Skip non-imageable prims (Materials, Shaders, Scopes that hold them).
                 if prim.IsA(UsdShade.Material) or prim.IsA(UsdShade.Shader):
                     continue
-                if UsdGeom.Imageable(prim):
-                    _force_bind(prim)
+                path = prim.GetPath().pathString
+                if "/collisions" in path:
+                    continue
+                if not UsdGeom.Imageable(prim):
+                    continue
+                _force_bind(prim)
             applied += 1
 
     print(f"[recolor_drones] applied={applied} skipped={skipped} drones across {num_envs} envs")
