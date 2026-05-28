@@ -80,33 +80,41 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
     shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
     mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
 
-    # Walk the source USD to discover every Mesh + GeomSubset prim under
-    # body/visuals and prop*/visuals (their material bindings beat any parent
-    # bind). Author an OverridePrim in the wrapper at each path that re-binds
-    # to our tinted material with strongerThanDescendants.
+    # Walk the source USD to discover every Mesh + GeomSubset prim. The mesh
+    # tree lives at /visuals/body and /visuals/prop{1..4}/prop and is brought
+    # into the articulation namespace (/a_5_in_drone/body/visuals,
+    # /a_5_in_drone/prop{i}/visuals) via internal references inside the payload.
+    # USD's offline composition doesn't expose those mapped paths via
+    # GetChildren() — so we walk the reference TARGET and translate paths.
     from pxr import UsdGeom
 
-    src_stage = Usd.Stage.Open(_SOURCE_USD)
-    target_relpaths: list[str] = []  # relative to /a_5_in_drone
+    physics_usd = os.path.join(_ASSET_DIR, "configuration", "5_in_drone_physics.usd")
+    src_stage = Usd.Stage.Open(physics_usd, Usd.Stage.LoadAll)
+    target_relpaths: list[str] = []
 
-    visual_xform_paths = [
-        "/a_5_in_drone/body/visuals",
-        "/a_5_in_drone/prop1/visuals",
-        "/a_5_in_drone/prop2/visuals",
-        "/a_5_in_drone/prop3/visuals",
-        "/a_5_in_drone/prop4/visuals",
-    ]
-    for vp in visual_xform_paths:
-        vp_prim = src_stage.GetPrimAtPath(vp)
-        if not vp_prim.IsValid():
+    # Mapping: source path prefix -> wrapper namespace prefix
+    mapping = {
+        "/visuals/body": "/a_5_in_drone/body/visuals",
+        "/visuals/prop1": "/a_5_in_drone/prop1/visuals",
+        "/visuals/prop2": "/a_5_in_drone/prop2/visuals",
+        "/visuals/prop3": "/a_5_in_drone/prop3/visuals",
+        "/visuals/prop4": "/a_5_in_drone/prop4/visuals",
+    }
+    for src_prefix, dst_prefix in mapping.items():
+        src_prim = src_stage.GetPrimAtPath(src_prefix)
+        if not src_prim.IsValid():
             continue
-        target_relpaths.append(vp)
-        for child in Usd.PrimRange(vp_prim):
-            path = str(child.GetPath())
-            if path == vp:
+        # Bind on the Xform root itself first (catches default bindings).
+        target_relpaths.append(dst_prefix)
+        for child in Usd.PrimRange(src_prim):
+            src_path = str(child.GetPath())
+            if src_path == src_prefix:
                 continue
-            if UsdGeom.Mesh(child) or UsdGeom.Subset(child):
-                target_relpaths.append(path)
+            if not (UsdGeom.Mesh(child) or UsdGeom.Subset(child) or UsdGeom.Xform(child)):
+                continue
+            # Translate path: /visuals/body/<rest> -> /a_5_in_drone/body/visuals/<rest>
+            rest = src_path[len(src_prefix):]
+            target_relpaths.append(dst_prefix + rest)
 
     for tp in target_relpaths:
         over = stage.OverridePrim(Sdf.Path(tp))
