@@ -43,9 +43,13 @@ _SOURCE_USD = os.path.join(_ASSET_DIR, "5_in_drone.usd")
 
 
 def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
-    """Write a wrapper USD that references 5_in_drone.usd and overrides material
-    at body/visuals + prop*/visuals. Returns the wrapper USD path. Cached on disk
-    so subsequent runs reuse the file.
+    """Write a wrapper USD that references 5_in_drone.usd, deactivates the
+    visuals' instanceable flag, then re-binds every Mesh + GeomSubset to our
+    tinted material. Returns the wrapper USD path. Cached on disk so
+    subsequent runs reuse the file.
+
+    Writes to a temp file and atomically renames on success so a partial file
+    can never poison the cache.
     """
     try:
         from pxr import Usd, UsdShade, Sdf, Gf
@@ -57,7 +61,10 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
     if os.path.exists(out_path):
         return out_path
 
-    stage = Usd.Stage.CreateNew(out_path)
+    tmp_path = out_path + ".part"
+    if os.path.exists(tmp_path):
+        os.remove(tmp_path)
+    stage = Usd.Stage.CreateNew(tmp_path)
     stage.SetMetadata("metersPerUnit", 1.0)
     stage.SetMetadata("upAxis", "Z")
 
@@ -102,6 +109,15 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
         "/visuals/prop3": "/Drone/prop3/visuals",
         "/visuals/prop4": "/Drone/prop4/visuals",
     }
+    # STEP 1: deactivate instancing on the visual roots BEFORE authoring any
+    # descendant overrides. Source has instanceable=true on body/visuals + the
+    # four prop*/visuals — that makes every Mesh + GeomSubset inside an
+    # instance proxy (uneditable). Override the flag first.
+    for dst_prefix in mapping.values():
+        over = stage.OverridePrim(Sdf.Path(dst_prefix))
+        over.SetInstanceable(False)
+
+    # STEP 2: collect every Mesh + GeomSubset path in the wrapper namespace.
     for src_prefix, dst_prefix in mapping.items():
         src_prim = src_stage.GetPrimAtPath(src_prefix)
         if not src_prim.IsValid():
@@ -111,13 +127,13 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
             src_path = str(child.GetPath())
             if src_path == src_prefix:
                 continue
-            # Bind only on actual renderable prims (Mesh + Subset). Xform binds
-            # are unnecessary noise and Isaac's per-subset bindings outrank them.
             if not (UsdGeom.Mesh(child) or UsdGeom.Subset(child)):
                 continue
             rest = src_path[len(src_prefix):]
             target_relpaths.append(dst_prefix + rest)
 
+    # STEP 3: bind tinted material at every target path. Now that the parent
+    # visual Xform is not instanceable, OverridePrim on descendants works.
     for tp in target_relpaths:
         over = stage.OverridePrim(Sdf.Path(tp))
         UsdShade.MaterialBindingAPI.Apply(over).Bind(
@@ -125,6 +141,8 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
         )
 
     stage.GetRootLayer().Save()
+    # Atomic rename onto the cached path.
+    os.replace(tmp_path, out_path)
     print(f"[swarm] baked tinted USD: {out_path}  color={color}  overrides={len(target_relpaths)}")
     return out_path
 
@@ -137,6 +155,18 @@ def make_drone_articulation(drone_idx: int) -> ArticulationCfg:
         tinted_path = _bake_tinted_usd(drone_idx, color)
     except Exception as exc:
         print(f"[swarm] tinted-USD bake failed for drone {drone_idx}: {exc!r} — falling back to source")
+        # Sweep up any partial wrapper file left behind so the next attempt
+        # doesn't get the broken cached path.
+        try:
+            partial = os.path.join(_TINTED_DIR, f"drone_{drone_idx}.usd.part")
+            if os.path.exists(partial):
+                os.remove(partial)
+            final = os.path.join(_TINTED_DIR, f"drone_{drone_idx}.usd")
+            # Only remove final if it was just half-written (size 0 or tiny).
+            if os.path.exists(final) and os.path.getsize(final) < 1024:
+                os.remove(final)
+        except Exception:
+            pass
         tinted_path = _SOURCE_USD
 
     spawn = copy.deepcopy(FIVE_IN_DRONE.spawn)
