@@ -336,7 +336,7 @@ def _build_terminations(num_drones: int) -> _SwarmTerminationsCfg:
         ))
         setattr(cfg, f"collision_{i}", DoneTerm(
             func=mdp.illegal_contact,
-            params={"sensor_cfg": SceneEntityCfg(f"collision_sensor_{i}"), "threshold": 80.0},
+            params={"sensor_cfg": SceneEntityCfg(f"collision_sensor_{i}"), "threshold": 200.0},
         ))
         setattr(cfg, f"gate_collision_{i}", DoneTerm(
             func=mdp.gate_collision, params={"command_name": f"target_{i}"},
