@@ -73,7 +73,7 @@ def generate_plots(log_directory: str):  # noqa: C901
 
     # check if the time column is present, otherwise create a column with values starting from zero with increments of 0.005
     if "time" not in log_data.columns:
-        log_data["time"] = np.arange(0, len(log_data) * 0.005, 0.005)
+        log_data["time"] = np.arange(len(log_data)) * 0.005
         print("time column not found, creating a new one")
 
     # check if px, py, pz, pxd, pyd, pzd columns are present
