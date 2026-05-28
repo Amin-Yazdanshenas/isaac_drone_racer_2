@@ -8,6 +8,9 @@
 **/*.dmp
 **/.thumbs
 
+# Generated swarm tinted-USD wrappers
+assets/5_in_drone/_tinted/
+
 # No USD files allowed in the repo
 # **/*.usd
 # **/*.usda
