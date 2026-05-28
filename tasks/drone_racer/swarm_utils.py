@@ -214,7 +214,7 @@ def make_collision_sensor(drone_idx: int) -> ContactSensorCfg:
         prim_path=f"{{ENV_REGEX_NS}}/Drone_{drone_idx}/body",
         history_length=3,
         update_period=0.0,
-        force_threshold=80.0,  # gates buffer above prop gyro phantom (20 rad/s spin)
+        force_threshold=10.0,  # phantom near-zero now that prop mass = 1e-6
         debug_vis=False,
     )
 
