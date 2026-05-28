@@ -15,6 +15,7 @@ import isaaclab.sim as sim_utils
 import torch
 from isaaclab.assets import AssetBaseCfg, RigidObjectCollectionCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -293,11 +294,16 @@ def _build_observations(num_drones: int, include_camera: bool) -> _SwarmObsCfg:
 
 
 def _build_rewards(num_drones: int) -> _SwarmRewardsCfg:
+    """Paper-style reward (Geles et al 2024): progress + ranking
+    - body_rate(L1) - proximity(velocity-weighted exp). Plus kept project-specific:
+    gate_passed (sparse +400 on traversal), lookat_next_gate (small heading aim),
+    terminating (small crash penalty)."""
     cfg = _SwarmRewardsCfg()
     for i in range(num_drones):
         setattr(cfg, f"terminating_{i}", RewTerm(func=mdp.is_terminated, weight=-100.0 / num_drones))
+        # Body-rate smoothness — paper Eq. 2 (L1).
         setattr(cfg, f"ang_vel_{i}", RewTerm(
-            func=mdp.ang_vel_l2, weight=-0.0001,
+            func=mdp.ang_vel_l1, weight=-0.01,
             params={"asset_cfg": SceneEntityCfg(f"drone_{i}")},
         ))
         setattr(cfg, f"progress_{i}", RewTerm(
@@ -315,13 +321,18 @@ def _build_rewards(num_drones: int) -> _SwarmRewardsCfg:
             params={"command_name": f"target_{i}", "std": 0.5,
                     "asset_cfg": SceneEntityCfg(f"drone_{i}")},
         ))
-    # Soft pairwise penalty — drops from -50 -> -10 so the single-drone race
-    # reward dominates early training; ramp back up once gate-pass rate > 50%.
-    cfg.drone_drone_collision = RewTerm(
-        func=mdp.drone_drone_collision_penalty,
-        weight=-10.0,
-        params={"num_drones": num_drones, "safety_distance": 0.4},
-    )
+        # Paper Eq. 4 ranking reward: leader=1, last=1/N.
+        setattr(cfg, f"rank_{i}", RewTerm(
+            func=mdp.race_ranking, weight=2.0,
+            params={"drone_idx": i, "num_drones": num_drones},
+        ))
+        # Paper Eq. 3 velocity-weighted exponential proximity penalty.
+        # Weight starts at 0 (curriculum bumps it after step_threshold).
+        setattr(cfg, f"proximity_{i}", RewTerm(
+            func=mdp.opponent_proximity_penalty, weight=0.0,
+            params={"drone_idx": i, "num_drones": num_drones,
+                    "d_col": 0.10, "lambda5": 2.0},
+        ))
     return cfg
 
 
@@ -341,10 +352,29 @@ def _build_terminations(num_drones: int) -> _SwarmTerminationsCfg:
         setattr(cfg, f"gate_collision_{i}", DoneTerm(
             func=mdp.gate_collision, params={"command_name": f"target_{i}"},
         ))
-    cfg.drone_drone_collision = DoneTerm(
-        func=mdp.drone_drone_collision,
-        params={"num_drones": num_drones, "safety_distance": 0.25},
-    )
+    # Drone-drone collision DoneTerm removed — paper-style training treats
+    # inter-agent contact as a soft (proximity) penalty, with curriculum
+    # ramping its weight from 0 to penalty value. Lets agent learn to recover
+    # from minor contact instead of dying every time.
+    return cfg
+
+
+@configclass
+class _SwarmCurriculumCfg:
+    pass
+
+
+def _build_curriculum(num_drones: int) -> _SwarmCurriculumCfg:
+    """Paper curriculum: opponents start non-interactive (proximity penalty=0),
+    turn on after the policy can pass a few gates. Step threshold tuned for
+    ~500k env-steps at 4096 envs (≈120 PPO updates)."""
+    cfg = _SwarmCurriculumCfg()
+    step_on = 500_000
+    for i in range(num_drones):
+        setattr(cfg, f"proximity_on_{i}", CurrTerm(
+            func=mdp.modify_reward_weight,
+            params={"term_name": f"proximity_{i}", "weight": -1.0, "num_steps": step_on},
+        ))
     return cfg
 
 
@@ -370,6 +400,7 @@ class _SwarmEnvCfgBase(ManagerBasedRLEnvCfg):
     events: object = None
     rewards: object = None
     terminations: object = None
+    curriculum: object = None
 
     def __post_init__(self) -> None:
         populate_swarm_scene(self.scene, self.num_drones, self.include_camera)
@@ -386,6 +417,7 @@ class _SwarmEnvCfgBase(ManagerBasedRLEnvCfg):
         self.rewards = _build_rewards(self.num_drones)
         self.terminations = _build_terminations(self.num_drones)
         self.observations = _build_observations(self.num_drones, self.include_camera)
+        self.curriculum = _build_curriculum(self.num_drones)
 
         # Training behavior: respawn at random gate (matches single-drone train cfgs).
         for i in range(self.num_drones):

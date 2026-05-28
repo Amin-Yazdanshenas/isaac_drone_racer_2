@@ -193,3 +193,66 @@ def drone_drone_collision_penalty(
     dist = diff.norm(dim=-1)  # (E, N, N)
     mask = torch.triu(torch.ones_like(dist, dtype=torch.bool), diagonal=1)
     return ((dist < safety_distance) & mask).any(dim=(1, 2)).float()
+
+
+def ang_vel_l1(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize base angular velocity using L1 norm (paper Eq. body-rate term)."""
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.linalg.norm(asset.data.root_ang_vel_b, dim=1)
+
+
+def opponent_proximity_penalty(
+    env: ManagerBasedRLEnv,
+    drone_idx: int,
+    num_drones: int,
+    d_col: float = 0.10,
+    lambda5: float = 2.0,
+) -> torch.Tensor:
+    """Velocity-weighted exponential proximity penalty (paper, Eq. 3 r_prox).
+    Active only when nearest opponent distance < 2*d_col. Use negative weight.
+
+        r_prox = ||v|| * (1 + exp(-lambda5 * d_tilde))
+        d_tilde = (d_opp - d_col) / d_col
+    """
+    positions = _stack_drone_positions(env, num_drones)  # (E, N, 3)
+    ego_pos = positions[:, drone_idx]  # (E, 3)
+    diff = positions - ego_pos.unsqueeze(1)  # (E, N, 3)
+    dist = diff.norm(dim=-1)  # (E, N)
+    dist[:, drone_idx] = float("inf")  # exclude self
+    d_opp, _ = dist.min(dim=1)  # (E,)
+    active = d_opp < 2.0 * d_col
+    d_tilde = (d_opp - d_col) / d_col
+    v_norm = env.scene[f"drone_{drone_idx}"].data.root_lin_vel_w.norm(dim=-1)
+    return torch.where(active, v_norm * (1.0 + torch.exp(-lambda5 * d_tilde)), torch.zeros_like(v_norm))
+
+
+def race_ranking(
+    env: ManagerBasedRLEnv,
+    drone_idx: int,
+    num_drones: int,
+    command_prefix: str = "target_",
+) -> torch.Tensor:
+    """Per-drone ranking reward (paper, Eq. 4 r_rank).
+
+        r_rank = (N - (rank - 1)) / N
+        rank=1 (leader) → 1.0, rank=N → 1/N.
+
+    Rank is by primary key = gates passed (next_gate_idx), tiebreak = -dist-to-next-gate.
+    """
+    next_gate = torch.stack(
+        [env.command_manager.get_term(f"{command_prefix}{i}").next_gate_idx for i in range(num_drones)],
+        dim=1,
+    )  # (E, N) int
+    # tiebreak score: -distance to own next gate (closer = higher score)
+    dists = []
+    for i in range(num_drones):
+        cmd = env.command_manager.get_term(f"{command_prefix}{i}")
+        ego_pos = env.scene[f"drone_{i}"].data.root_pos_w
+        dists.append((cmd.command[:, :3] - ego_pos).norm(dim=-1))
+    dist_to_next = torch.stack(dists, dim=1)  # (E, N)
+    # Composite score: gates_passed * 100 - dist  (large enough to dominate)
+    score = next_gate.float() * 100.0 - dist_to_next
+    # Rank of drone_idx = number of drones with strictly higher score + 1
+    my_score = score[:, drone_idx:drone_idx + 1]  # (E, 1)
+    rank = (score > my_score).sum(dim=1).float() + 1.0  # (E,)
+    return (num_drones - (rank - 1.0)) / num_drones

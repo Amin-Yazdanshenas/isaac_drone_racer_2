@@ -101,14 +101,24 @@ def drone_drone_collision(
     env: ManagerBasedRLEnv,
     num_drones: int,
     safety_distance: float = 0.25,
+    non_terminal_prob: float = 0.10,
 ) -> torch.Tensor:
     """Episode-ending pairwise drone-drone proximity check. Returns (num_envs,) bool.
     Tighter than the reward-side safety_distance so the penalty has a band before
-    termination fires."""
+    termination fires.
+
+    non_terminal_prob (paper, Geles et al 2024): probability that an otherwise
+    terminating drone-drone contact is forgiven, letting the agent learn recovery
+    from minor contact instead of being reset every time.
+    """
     positions = torch.stack(
         [env.scene[f"drone_{i}"].data.root_pos_w for i in range(num_drones)], dim=1
     )  # (E, N, 3)
     diff = positions.unsqueeze(2) - positions.unsqueeze(1)
     dist = diff.norm(dim=-1)
     mask = torch.triu(torch.ones_like(dist, dtype=torch.bool), diagonal=1)
-    return ((dist < safety_distance) & mask).any(dim=(1, 2))
+    hit = ((dist < safety_distance) & mask).any(dim=(1, 2))
+    if non_terminal_prob > 0.0:
+        forgive = torch.rand(env.num_envs, device=hit.device) < non_terminal_prob
+        hit = hit & ~forgive
+    return hit
