@@ -61,7 +61,9 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
     if os.path.exists(out_path):
         return out_path
 
-    tmp_path = out_path + ".part"
+    # USD CreateNew picks file format from extension — must be .usd/.usda/.usdc.
+    # ".part" was silently rejected. Use a sibling .usd temp name instead.
+    tmp_path = os.path.join(_TINTED_DIR, f"_partial_drone_{drone_idx}.usd")
     if os.path.exists(tmp_path):
         os.remove(tmp_path)
     stage = Usd.Stage.CreateNew(tmp_path)
@@ -158,7 +160,7 @@ def make_drone_articulation(drone_idx: int) -> ArticulationCfg:
         # Sweep up any partial wrapper file left behind so the next attempt
         # doesn't get the broken cached path.
         try:
-            partial = os.path.join(_TINTED_DIR, f"drone_{drone_idx}.usd.part")
+            partial = os.path.join(_TINTED_DIR, f"_partial_drone_{drone_idx}.usd")
             if os.path.exists(partial):
                 os.remove(partial)
             final = os.path.join(_TINTED_DIR, f"drone_{drone_idx}.usd")
