@@ -295,7 +295,7 @@ def _build_observations(num_drones: int, include_camera: bool) -> _SwarmObsCfg:
 def _build_rewards(num_drones: int) -> _SwarmRewardsCfg:
     cfg = _SwarmRewardsCfg()
     for i in range(num_drones):
-        setattr(cfg, f"terminating_{i}", RewTerm(func=mdp.is_terminated, weight=-500.0 / num_drones))
+        setattr(cfg, f"terminating_{i}", RewTerm(func=mdp.is_terminated, weight=-100.0 / num_drones))
         setattr(cfg, f"ang_vel_{i}", RewTerm(
             func=mdp.ang_vel_l2, weight=-0.0001,
             params={"asset_cfg": SceneEntityCfg(f"drone_{i}")},
@@ -307,7 +307,7 @@ def _build_rewards(num_drones: int) -> _SwarmRewardsCfg:
         ))
         setattr(cfg, f"gate_passed_{i}", RewTerm(
             func=mdp.gate_passed, weight=400.0,
-            params={"command_name": f"target_{i}", "penalize_miss": True,
+            params={"command_name": f"target_{i}", "penalize_miss": False,
                     "asset_cfg": SceneEntityCfg(f"drone_{i}")},
         ))
         setattr(cfg, f"lookat_{i}", RewTerm(
