@@ -61,20 +61,22 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
     stage.SetMetadata("metersPerUnit", 1.0)
     stage.SetMetadata("upAxis", "Z")
 
-    # Define root prim referencing the original.
-    root_path = Sdf.Path("/a_5_in_drone")
+    # Wrapper root is named "Drone" (NOT "a_5_in_drone") to avoid a name
+    # collision when Isaac references this wrapper INTO Drone_i — with the
+    # same name on both sides composition can produce an unintended extra
+    # nesting layer (/Drone_i/a_5_in_drone/...).
+    root_path = Sdf.Path("/Drone")
     root = stage.DefinePrim(root_path, "Xform")
-    # Reference path must be relative or absolute. Use absolute path to the source.
     root.GetReferences().AddReference(_SOURCE_USD)
     stage.SetDefaultPrim(root)
 
-    # Define a UsdPreviewSurface material under the root.
+    # Material under the wrapper root.
     mat = UsdShade.Material.Define(stage, root_path.AppendChild("Looks").AppendChild("DroneColor"))
     shader = UsdShade.Shader.Define(stage, mat.GetPath().AppendChild("Shader"))
     shader.CreateIdAttr("UsdPreviewSurface")
     shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
     shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(
-        Gf.Vec3f(color[0] * 0.4, color[1] * 0.4, color[2] * 0.4)
+        Gf.Vec3f(color[0] * 0.15, color[1] * 0.15, color[2] * 0.15)
     )
     shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.6)
     shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
@@ -92,27 +94,27 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
     src_stage = Usd.Stage.Open(physics_usd, Usd.Stage.LoadAll)
     target_relpaths: list[str] = []
 
-    # Mapping: source path prefix -> wrapper namespace prefix
+    # Mapping: source mesh root -> wrapper namespace path under /Drone.
     mapping = {
-        "/visuals/body": "/a_5_in_drone/body/visuals",
-        "/visuals/prop1": "/a_5_in_drone/prop1/visuals",
-        "/visuals/prop2": "/a_5_in_drone/prop2/visuals",
-        "/visuals/prop3": "/a_5_in_drone/prop3/visuals",
-        "/visuals/prop4": "/a_5_in_drone/prop4/visuals",
+        "/visuals/body": "/Drone/body/visuals",
+        "/visuals/prop1": "/Drone/prop1/visuals",
+        "/visuals/prop2": "/Drone/prop2/visuals",
+        "/visuals/prop3": "/Drone/prop3/visuals",
+        "/visuals/prop4": "/Drone/prop4/visuals",
     }
     for src_prefix, dst_prefix in mapping.items():
         src_prim = src_stage.GetPrimAtPath(src_prefix)
         if not src_prim.IsValid():
             continue
-        # Bind on the Xform root itself first (catches default bindings).
         target_relpaths.append(dst_prefix)
         for child in Usd.PrimRange(src_prim):
             src_path = str(child.GetPath())
             if src_path == src_prefix:
                 continue
-            if not (UsdGeom.Mesh(child) or UsdGeom.Subset(child) or UsdGeom.Xform(child)):
+            # Bind only on actual renderable prims (Mesh + Subset). Xform binds
+            # are unnecessary noise and Isaac's per-subset bindings outrank them.
+            if not (UsdGeom.Mesh(child) or UsdGeom.Subset(child)):
                 continue
-            # Translate path: /visuals/body/<rest> -> /a_5_in_drone/body/visuals/<rest>
             rest = src_path[len(src_prefix):]
             target_relpaths.append(dst_prefix + rest)
 
