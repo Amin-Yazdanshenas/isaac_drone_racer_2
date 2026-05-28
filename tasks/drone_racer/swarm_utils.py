@@ -80,19 +80,42 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
     shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
     mat.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
 
-    # Override material binding on body/visuals and prop1..prop4/visuals.
-    target_paths = [root_path.AppendPath("body").AppendChild("visuals")]
-    for p in range(1, 5):
-        target_paths.append(root_path.AppendPath(f"prop{p}").AppendChild("visuals"))
+    # Walk the source USD to discover every Mesh + GeomSubset prim under
+    # body/visuals and prop*/visuals (their material bindings beat any parent
+    # bind). Author an OverridePrim in the wrapper at each path that re-binds
+    # to our tinted material with strongerThanDescendants.
+    from pxr import UsdGeom
 
-    for tp in target_paths:
-        over = stage.OverridePrim(tp)
+    src_stage = Usd.Stage.Open(_SOURCE_USD)
+    target_relpaths: list[str] = []  # relative to /a_5_in_drone
+
+    visual_xform_paths = [
+        "/a_5_in_drone/body/visuals",
+        "/a_5_in_drone/prop1/visuals",
+        "/a_5_in_drone/prop2/visuals",
+        "/a_5_in_drone/prop3/visuals",
+        "/a_5_in_drone/prop4/visuals",
+    ]
+    for vp in visual_xform_paths:
+        vp_prim = src_stage.GetPrimAtPath(vp)
+        if not vp_prim.IsValid():
+            continue
+        target_relpaths.append(vp)
+        for child in Usd.PrimRange(vp_prim):
+            path = str(child.GetPath())
+            if path == vp:
+                continue
+            if UsdGeom.Mesh(child) or UsdGeom.Subset(child):
+                target_relpaths.append(path)
+
+    for tp in target_relpaths:
+        over = stage.OverridePrim(Sdf.Path(tp))
         UsdShade.MaterialBindingAPI.Apply(over).Bind(
             mat, bindingStrength=UsdShade.Tokens.strongerThanDescendants
         )
 
     stage.GetRootLayer().Save()
-    print(f"[swarm] baked tinted USD: {out_path}  color={color}")
+    print(f"[swarm] baked tinted USD: {out_path}  color={color}  overrides={len(target_relpaths)}")
     return out_path
 
 
