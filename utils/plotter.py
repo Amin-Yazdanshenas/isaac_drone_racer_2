@@ -132,19 +132,13 @@ def generate_plots(log_directory: str):  # noqa: C901
         # plt.show()
 
     if plot_orientation_from_quat:
-        # convert quaternion to euler angles using the function from scipy
-        # create a new column for the euler angles
-        log_data["roll"] = 0
-        log_data["pitch"] = 0
-        log_data["yaw"] = 0
-        # convert the quaternion to euler angles
-        for i in range(len(log_data)):
-            q = [log_data["qw"][i], log_data["qx"][i], log_data["qy"][i], log_data["qz"][i]]
-            r = R.from_quat(q, scalar_first=True)
-            euler = r.as_euler("XYZ", degrees=True)
-            log_data["roll"][i] = euler[0]
-            log_data["pitch"][i] = euler[1]
-            log_data["yaw"][i] = euler[2]
+        # Vectorised quaternion -> Euler. Avoids per-row chained-assignment +
+        # int64 dtype trap (pandas CoW + lossy-setitem-error on float into int col).
+        quats = log_data[["qw", "qx", "qy", "qz"]].to_numpy(dtype=float)
+        eulers = R.from_quat(quats, scalar_first=True).as_euler("XYZ", degrees=True)
+        log_data["roll"] = eulers[:, 0]
+        log_data["pitch"] = eulers[:, 1]
+        log_data["yaw"] = eulers[:, 2]
         # plot the orientation
         fig, ax = plt.subplots(3, 1)
         fig.suptitle("Orientation")

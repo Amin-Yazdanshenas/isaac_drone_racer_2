@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LLM Council — Swarm method / reward model / LSTM PPO</title>
+<style>
+  :root {
+    --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#e1e1e1;
+    --accent:#2563eb; --warn:#d97706; --bad:#dc2626; --good:#16a34a;
+    --contr:#dc2626; --first:#7c3aed; --exec:#16a34a; --out:#0891b2; --exp:#d97706;
+  }
+  html, body { background: var(--bg); color: var(--fg); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    max-width: 880px; margin: 0 auto; padding: 32px 24px; line-height: 1.55;
+  }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 18px; margin: 28px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+  h3 { font-size: 15px; margin: 18px 0 6px; }
+  .meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .question {
+    background: #f9fafb; border-left: 3px solid var(--accent);
+    padding: 14px 18px; border-radius: 4px; font-size: 14px; margin-bottom: 24px;
+  }
+  .verdict { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px;
+    padding: 20px 24px; margin: 16px 0 24px; }
+  .verdict h2 { border: none; padding-top: 0; margin-top: 0; font-size: 20px; color: var(--warn); }
+  .verdict h3 { margin-top: 14px; font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .recommendation { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 16px 20px; margin: 14px 0; }
+  .recommendation h3 { color: var(--good); margin-top: 0; }
+  .first-action { background: #eff6ff; border-left: 4px solid var(--accent); padding: 16px 20px; margin: 12px 0 0; border-radius: 4px; }
+  .first-action h3 { color: var(--accent); margin-top: 0; }
+  .grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0;
+  }
+  .card {
+    border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; font-size: 13px;
+  }
+  .card.contr { border-left: 4px solid var(--contr); }
+  .card.first { border-left: 4px solid var(--first); }
+  .card.exec  { border-left: 4px solid var(--exec); }
+  .card.out   { border-left: 4px solid var(--out); }
+  .card.exp   { border-left: 4px solid var(--exp); }
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 7px;
+    border-radius: 3px; vertical-align: middle; margin-left: 6px;
+  }
+  .badge.agree { background: #dcfce7; color: #166534; }
+  .badge.diss  { background: #fee2e2; color: #991b1b; }
+  details { margin: 10px 0; border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 14px; background: #fafafa; }
+  summary { font-weight: 600; cursor: pointer; padding: 4px 0; }
+  details[open] summary { margin-bottom: 8px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+  details .body { font-size: 14px; color: #333; padding: 6px 0; }
+  details.contr { border-left: 4px solid var(--contr); }
+  details.first { border-left: 4px solid var(--first); }
+  details.exec  { border-left: 4px solid var(--exec); }
+  details.out   { border-left: 4px solid var(--out); }
+  details.exp   { border-left: 4px solid var(--exp); }
+  .footer { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12px; }
+  code { background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; }
+  ul { padding-left: 22px; }
+  li { margin: 4px 0; }
+  .clash { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
+  .clash > div { border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; font-size: 13.5px; }
+  .clash .for { border-left: 3px solid var(--exp); }
+  .clash .against { border-left: 3px solid var(--bad); }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; margin: 6px 0 12px; }
+  .legend span { padding: 2px 8px; border-radius: 3px; border-left: 3px solid; }
+  .legend .contr { border-color: var(--contr); }
+  .legend .first { border-color: var(--first); }
+  .legend .exec  { border-color: var(--exec); }
+  .legend .out   { border-color: var(--out); }
+  .legend .exp   { border-color: var(--exp); }
+</style>
+</head>
+<body>
+
+<h1>LLM Council — Swarm method, reward model, LSTM PPO decision</h1>
+<div class="meta">Session: 2026-05-28 18:06:54 · Repo: isaac_drone_racer</div>
+
+<div class="question">
+<strong>The question:</strong> Council the swarm method and its reward model. Should the PPO model switch to LSTM PPO or not?
+</div>
+
+<!-- VERDICT BLOCK -->
+<div class="verdict">
+<h2>Council Verdict</h2>
+
+<h3>Where the council agrees</h3>
+<ul>
+  <li><strong>60-step episode length is the root signal, not architecture.</strong> 4 of 5 advisors flag surviving 0.6s as upstream of every other problem.</li>
+  <li><strong>Reward weights are mis-scaled for current episode length.</strong> Sparse <code>gate_passed=+400</code> fires ~1/50 eps while dense <code>progress=+20</code> fires every step. Policy farms progress without orienting (lookat ≈ 0 confirms it).</li>
+  <li><strong>Single-drone control experiment first.</strong> Isolate the swarm variable. If single-drone NoCam-CTBR also stalls on this reward stack, bug is upstream of swarm.</li>
+  <li><strong>Stddev collapse + positive reward is NOT convergence.</strong> Confident local-optimum lock-in — policy committed to a bad strategy.</li>
+</ul>
+
+<h3>Where the council clashes</h3>
+<div class="clash">
+  <div class="for"><strong>Expansionist:</strong> ship LSTM + attention + league self-play now. The 0.6s crash episodes are gold for collision/recovery data. Hardware advantage over Geles24 (overnight league play on RTX 4090 vs TPU cluster). Unlocks N=8/16, sim-to-real distillation, open swarm benchmark.</div>
+  <div class="against"><strong>Everyone else (4-to-1):</strong> LSTM on a non-flying policy trains memory over noise. Geles24 bootstrapped from a working single-agent prior. Building recurrence over a broken substrate is premature optimization.</div>
+</div>
+
+<h3>Blind spots the council caught (peer review)</h3>
+<ul>
+  <li><strong>R1 — Spawn-time phantom:</strong> the 60-step death may not be a learned crash. Recent commits (<code>fix(asset): zero prop mass</code>, <code>bump contact force=80</code>) show ongoing contact-sensor phantoms. <code>illegal_contact</code> may fire at step 0–5.</li>
+  <li><strong>R2 — CTBR / motor allocation bug:</strong> drones may be entering unrecoverable states at reset (prop spin-up, IMU warmup).</li>
+  <li><strong>R3 — Zero d2d signal right now:</strong> d2d termination removed AND proximity curriculum starts at weight 0. No separation pressure. Also: is 60 = <code>max_episode_length</code> or actual termination? Diagnoses diverge.</li>
+  <li><strong>R4 — Batched advantage smearing:</strong> in concat-state PPO with 4 drones sharing gradients, one drone's -25 termination can poison the others' advantage estimates.</li>
+  <li><strong>R5 — Gate-pass detector false-negatives:</strong> <code>GateTargetingCommand</code> bbox check may reject valid passes. Plus <code>env_spacing=0.0</code> = all 4 drones share one track at spawn — spawn collisions independent of policy.</li>
+</ul>
+
+<div class="recommendation">
+<h3>The recommendation</h3>
+<strong>Do NOT switch to LSTM PPO. Do NOT touch architecture.</strong> Stay on MLP for swarm.
+<br><br>
+The symptom set (60-step episodes, gate_passed ≈ 0.02, lookat ≈ 0, stddev collapsing, total reward positive) is consistent with a degenerate local optimum caused by reward miscalibration plus an unverified termination signal. None of the 5 reviewer-surfaced suspect mechanisms (spawn phantom, CTBR mapping, env_spacing=0 spawn collisions, missing d2d signal, gate-pass detector false-negatives, batched advantage smearing) are fixable by adding recurrence or attention.
+<br><br>
+The paper-style reward stack (proximity, ranking, L1 body rate, 10% non-terminal d2d) is structurally correct but operates on the wrong scale for current episode lengths. Fix the substrate first.
+</div>
+
+<div class="first-action">
+<h3>The one thing to do first</h3>
+Run one diagnostic episode and instrument what's killing the drone at step 60:
+<br><br>
+<code>python3 scripts/rl/play.py --task Isaac-Drone-Racer-Swarm-NoCam-CTBR-Play-v0 --num_envs 1 --num_drones 4 --log 5</code>
+<br><br>
+Then print which <code>TerminationManager</code> term fires and at what step.
+<ul>
+  <li>Fires at step 0–5 → spawn phantom (R1). Fix contact thresholds, forget reward debate.</li>
+  <li>Fires at step ~60 from <code>flyaway</code> / <code>gate_collision</code> → policy losing control. Tune rewards.</li>
+  <li>Never fires, 60 = <code>max_episode_length</code> → diagnosis flips entirely (truncation, not termination).</li>
+</ul>
+Time: ~30 min. Every downstream debate is uninstrumented without this datum.
+</div>
+</div>
+
+<!-- ADVISOR ALIGNMENT VISUAL -->
+<h2>Advisor positions</h2>
+<div class="legend">
+  <span class="contr">Contrarian</span>
+  <span class="first">First Principles</span>
+  <span class="exec">Executor</span>
+  <span class="out">Outsider</span>
+  <span class="exp">Expansionist</span>
+</div>
+
+<div class="grid">
+  <div class="card contr">
+    <strong>Contrarian</strong> <span class="badge agree">DEFER LSTM</span><br>
+    Reward positive = farming shaping before dying. Local optimum lock-in, not convergence. Fix single-drone, then maybe LSTM.
+  </div>
+  <div class="card first">
+    <strong>First Principles</strong> <span class="badge agree">DEFER LSTM</span><br>
+    Wrong question. Drones can't fly 0.6s. No temporal structure to model. Prove single-drone clears 3 gates first.
+  </div>
+  <div class="card exec">
+    <strong>Executor</strong> <span class="badge agree">DEFER LSTM</span><br>
+    Monday plan: (1) play --log 5 diagnose (2) single-drone ablation (3) crank gate_passed +2000 OR decay progress near gate (4) no LSTM yet.
+  </div>
+  <div class="card out">
+    <strong>Outsider</strong> <span class="badge agree">DEFER LSTM</span><br>
+    Instrument termination causes first. Progress dense drowns gate_passed sparse. Rewriting engine because car won't start.
+  </div>
+  <div class="card exp" style="grid-column: 1 / -1;">
+    <strong>Expansionist</strong> <span class="badge diss">SHIP LSTM NOW</span><br>
+    Crashes are gold. RTX 4090 + 5–10s/update beats Geles24's TPU iteration. Asymmetric AC + LSTM = sim-to-real distillation. Release open swarm benchmark. (Sole dissenter — unanimously flagged as biggest blind spot by reviewers.)
+  </div>
+</div>
+
+<!-- FULL RESPONSES (COLLAPSED) -->
+<h2>Full advisor responses</h2>
+
+<details class="contr">
+<summary>Contrarian — full response</summary>
+<div class="body">
+<p>Your training isn't broken because you lack an LSTM. It's broken because <strong>your drones are dying in 0.6 seconds and you're debating architecture.</strong></p>
+<p>Look at the actual signal: episode length 60 steps, gate_passed 0.02, lookat ≈ 0. The policy never gets to a gate. It's not failing to <em>remember</em> — it's failing to <em>survive</em>. An LSTM gives memory to a policy that has nothing worth remembering yet. You'll burn a week on recurrent PPO and the gate-pass rate will still be 0.02 because the underlying problem is upstream of memory.</p>
+<p>The reward stack is the obvious suspect and you're under-interrogating it. Progress (+20) signed-delta over a 60-step episode is paying the policy to <em>exist near gates</em>, not pass them. Gate_passed (+400 sparse) is unreachable noise at this episode length. Terminating (-25/drone) plus soft d2d collisions plus 90% non-forgiven hits = you removed the hard collision term and replaced it with a death-by-thousand-cuts that still kills episodes. The reward is positive because progress + rank + lookat baseline outweighs termination — <strong>the policy learned to farm shaping rewards before dying</strong>, which is exactly what stddev collapse on a 0.6s episode means. That's not convergence. That's local optimum lock-in.</p>
+<p>Also: you're benchmarking a 4-drone swarm before the single-drone variant clears gates reliably. Why? You buried the control variable.</p>
+<p><strong>Order of operations:</strong> single-drone first, fix episode length, then decide if LSTM is worth weeks. Don't rewrite to find out reward was the bug.</p>
+</div>
+</details>
+
+<details class="first">
+<summary>First Principles — full response</summary>
+<div class="body">
+<p>You're asking the wrong question entirely.</p>
+<p>The question isn't "MLP vs LSTM" or "reward weights." The question is: <strong>why are your drones dying in 0.6 seconds, and does any of this RL machinery matter until they don't?</strong></p>
+<p>60-step episodes mean your agents are not solving a racing problem. They are solving a "fall down slightly slower" problem. Gate-passing reward at +400 is irrelevant if the policy never sees a gate. LSTM won't help — there's no temporal structure to model in 60 steps. Attention over opponents won't help — opponents aren't the reason you're crashing.</p>
+<p>Strip it down. What are you actually trying to learn? <em>Stable forward flight toward a target.</em> That's the atomic skill. You don't have it.</p>
+<p>Before any swarm work, any LSTM, any Perceiver: <strong>does your single-drone NoCam policy reliably clear gate 1 from a stationary hover?</strong> If no, your CTBR action mapping, motor allocation, or termination conditions are broken.</p>
+<p>The paper you're copying assumes a working single-agent flight controller as a prior. Geles et al. didn't start from scratch — they had agile single-drone policies first. You're trying to learn swarm racing and basic flight simultaneously with shared gradients. That's the actual bug.</p>
+<p>Kill the swarm runs. Prove single-drone clears 3 gates consecutively in &gt;300-step episodes. Then add a second drone. Then worry about LSTM.</p>
+</div>
+</details>
+
+<details class="exec">
+<summary>Executor — full response</summary>
+<div class="body">
+<p>Stop. You're debating LSTM vs MLP while your drones die in 0.6 seconds. That is not a policy architecture problem. That is a "you cannot fly" problem.</p>
+<p>Monday morning, in order:</p>
+<p><strong>1. Diagnose the 60-step death.</strong> Run play with <code>--log 5</code>, watch ONE drone. Is it crashing into the ground? The next drone? Spinning out? 30 minutes.</p>
+<p><strong>2. Train the single-drone variant to gate-pass competence FIRST.</strong> Cheapest possible ablation. Run it tonight on the 4090.</p>
+<p><strong>3. Reward weights are almost certainly the problem.</strong> gate_passed=+400 sparse with 0.02/episode hit rate means the policy sees that signal ~once per 50 episodes. Meanwhile progress=+20 dense fires every step. Either crank gate_passed to +2000, or shape progress to decay near gate so the agent has to actually pass to keep earning. Also: terminating=-25 over 60 steps = -0.42/step baseline cost the policy is desperately trying to escape by... crashing faster.</p>
+<p><strong>4. Do NOT touch LSTM/Perceiver/league self-play yet.</strong> That's 2 weeks of plumbing. You haven't earned the right to those tools until single-drone clears gates and 4-drone-MLP plateaus for a clear reason.</p>
+<p>Order: diagnose crashes → fix single-drone → rebalance rewards → THEN consider recurrence.</p>
+</div>
+</details>
+
+<details class="out">
+<summary>Outsider — full response</summary>
+<div class="body">
+<p>Step back. You have a 60-step episode length. That's 0.6 seconds. The drones aren't failing to learn gates — they're not surviving long enough to <em>see</em> gates.</p>
+<p>Before touching architecture, answer this: what's killing them at 60 steps? Is it ground impact, drone-drone collision, going out of bounds, or the -25 terminating penalty firing on something benign? You haven't said. If you don't know, you're optimizing blind.</p>
+<p>The reward stack tells a story you may not be hearing. Progress went positive, value loss dropped, stddev collapsed — the policy is confidently learning <em>something</em>. But gate_passed ≈ 0.02 and lookat ≈ 0. Translation: it found a local optimum that farms progress reward without ever needing to orient toward a gate. That's a reward-shaping bug, not an architecture bug.</p>
+<p>On the LSTM question: you're asking whether to rewrite the engine because the car won't start. The paper's recurrent + attention + league stack is what you need to beat <em>other policies</em>, not what you need to pass a gate. Single-drone PPO already passes gates with an MLP. The swarm version isn't failing at the swarm part — it's failing at the solo part, in a swarm setting.</p>
+<p>Order: instrument termination causes first. Then rebalance progress vs. gate_passed (or add a per-step survival bonus) until episodes reach 200+ steps and gate_passed climbs. Only then ask whether LSTM helps.</p>
+</div>
+</details>
+
+<details class="exp">
+<summary>Expansionist — full response (dissenting)</summary>
+<div class="body">
+<p>Stop framing this as "fix gates first or upgrade architecture first." That's small thinking. You're sitting on something way more valuable than a gate-passing policy.</p>
+<p><strong>The 60-step crash episodes are gold, not a bug.</strong> You have a swarm env that generates dense collision/recovery data faster than anyone publishing in this space. Geles et al. needed a full league + Perceiver to get there. You can leapfrog by treating those crashes as the primary training signal — curriculum bootstraps from "survive 2s near 3 opponents" before you ever care about gates.</p>
+<p><strong>Bigger play: ship the LSTM + attention encoder NOW, not later.</strong> Once you have a recurrent permutation-invariant policy that works on N=4, the same checkpoint trivially scales to N=8, N=16, mixed-skill leagues, even cross-embodiment. The single-drone variant is a dead-end artifact. You're not upgrading architecture to fix gates; you're unlocking emergent blocking, drafting, downwash exploitation that an MLP literally cannot represent.</p>
+<p><strong>Hidden upside #1:</strong> 5–10s/update on a 4090 means league self-play <em>overnight</em> at a scale most labs can't. Geles used a TPU cluster.</p>
+<p><strong>Hidden upside #2:</strong> Asymmetric AC + privileged critic + LSTM actor = 80% of the way to a sim-to-real distillation pipeline. The cam-based student is a paper of its own.</p>
+<p><strong>Hidden upside #3:</strong> Downwash model + soft d2d penalty = first open swarm racing benchmark. Release it.</p>
+</div>
+</details>
+
+<details>
+<summary>Peer review highlights (5 reviewers)</summary>
+<div class="body">
+<p><strong>4 of 5 reviewers</strong> picked Executor as the strongest response — only one with concrete Monday-morning plan + dimensional analysis (-25/60steps = -0.42/step death incentive). 1 picked Outsider (sharper diagnostic signature).</p>
+<p><strong>5 of 5 reviewers</strong> picked Expansionist as the biggest blind spot. Consensus: "Crashes are gold" inverts the signal — they're noise from a broken flight prior, not collision/recovery data. League self-play over policies that crash in 0.6s produces a league of crashers. Geles24 explicitly bootstrapped from a working single-agent prior.</p>
+<p><strong>What all five missed</strong> (rich set):</p>
+<ul>
+<li>Spawn-time ContactSensor phantom may be firing the termination at step 0–5 (not a learned crash).</li>
+<li>CTBR / motor allocation may be putting drones into unrecoverable spawn states.</li>
+<li>Zero d2d signal currently exists (termination removed + curriculum starts at 0) — crashing is free.</li>
+<li>Batched concat-state PPO with shared gradients may smear one drone's -25 penalty across all 4 drones' advantage estimates.</li>
+<li>Gate-pass detector false-negatives are plausible. Plus <code>env_spacing=0.0</code> = all 4 drones share one track at spawn.</li>
+</ul>
+</div>
+</details>
+
+<div class="footer">
+LLM Council session. 5 advisors + 5 anonymized peer reviews + chairman synthesis.<br>
+Full transcript: <code>council-transcript-2026-05-28_180654.md</code><br>
+Methodology: Karpathy LLM Council.
+</div>
+
+</body>
+</html>
