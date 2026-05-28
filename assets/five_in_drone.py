@@ -50,11 +50,10 @@ FIVE_IN_DRONE = ArticulationCfg(
             ".*": 0.0,
         },
         joint_vel={
-            # Visual spin only. Joints are free (drive stiffness=damping=0)
-            # so this constant persists forever with no extra torque.
-            # Kept LOW (50 vs original 200) — gyroscopic body reaction scales
-            # with omega; 50 rad/s sits below ContactSensor noise floor once
-            # filtered with body-only + history_length=3.
+            # Visual prop spin. Joints are free (drive stiffness=damping=0)
+            # so this constant persists with no extra torque. Reactive gyro
+            # at spawn shows up on body ContactSensor — handled by raising
+            # force_threshold in both env cfgs (drone_racer + swarm).
             "m1_joint": 50.0,
             "m2_joint": -50.0,
             "m3_joint": 50.0,

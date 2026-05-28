@@ -60,7 +60,7 @@ class DroneRacerSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Robot/body",
         history_length=3,
         update_period=0.0,
-        force_threshold=10.0,
+        force_threshold=200.0,
         debug_vis=False,
     )
     imu = ImuCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
