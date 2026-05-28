@@ -54,10 +54,10 @@ FIVE_IN_DRONE = ArticulationCfg(
             # so this constant persists with no extra torque. Reactive gyro
             # at spawn shows up on body ContactSensor — handled by raising
             # force_threshold in both env cfgs (drone_racer + swarm).
-            "m1_joint": 50.0,
-            "m2_joint": -50.0,
-            "m3_joint": 50.0,
-            "m4_joint": -50.0,
+            "m1_joint": 20.0,
+            "m2_joint": -20.0,
+            "m3_joint": 20.0,
+            "m4_joint": -20.0,
         },
     ),
     actuators={
