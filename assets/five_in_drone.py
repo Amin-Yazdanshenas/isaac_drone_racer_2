@@ -50,7 +50,15 @@ FIVE_IN_DRONE = ArticulationCfg(
             ".*": 0.0,
         },
         joint_vel={
-            ".*": 0.0,
+            # Visual spin only. Joints are free (drive stiffness=damping=0)
+            # so this constant persists forever with no extra torque.
+            # Kept LOW (50 vs original 200) — gyroscopic body reaction scales
+            # with omega; 50 rad/s sits below ContactSensor noise floor once
+            # filtered with body-only + history_length=3.
+            "m1_joint": 50.0,
+            "m2_joint": -50.0,
+            "m3_joint": 50.0,
+            "m4_joint": -50.0,
         },
     ),
     actuators={
