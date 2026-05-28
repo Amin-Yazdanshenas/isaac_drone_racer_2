@@ -40,6 +40,48 @@ DRONE_PALETTE: list[tuple[float, float, float]] = [
 _ASSET_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "assets", "5_in_drone"))
 _TINTED_DIR = os.path.join(_ASSET_DIR, "_tinted")
 _SOURCE_USD = os.path.join(_ASSET_DIR, "5_in_drone.usd")
+_BASE_DAE = os.path.join(_ASSET_DIR, "meshes", "base_link.dae")
+
+
+def _collect_pink_material_names() -> set[str]:
+    """Parse base_link.dae and return material names whose diffuse RGB is
+    pink/magenta — the arm color in the source mesh. Used to selectively
+    retint only the arms (and any prim originally painted that color) without
+    touching frame/motors/camera mount.
+
+    Pink test: high R, low G, mid-to-high B. Catches Blender's "Material.00x"
+    default magenta (1, 0, 1) and the F_a306... arm material (0.913, 0.024, 0.231).
+    """
+    import xml.etree.ElementTree as ET
+
+    pink: set[str] = set()
+    try:
+        ns = "{http://www.collada.org/2005/11/COLLADASchema}"
+        tree = ET.parse(_BASE_DAE)
+        root = tree.getroot()
+        effects = {}
+        for eff in root.iter(ns + "effect"):
+            for col in eff.iter(ns + "color"):
+                if col.get("sid") == "diffuse":
+                    vals = [float(x) for x in col.text.split()][:3]
+                    effects[eff.get("id")] = tuple(vals)
+                    break
+        for mat in root.iter(ns + "material"):
+            ie = mat.find(ns + "instance_effect")
+            if ie is None:
+                continue
+            rgb = effects.get(ie.get("url").lstrip("#"))
+            if rgb is None:
+                continue
+            r, g, b = rgb
+            if r > 0.85 and g < 0.10:
+                pink.add(mat.get("name"))
+    except Exception as exc:
+        print(f"[swarm] _collect_pink_material_names failed: {exc!r} — falling back to default set")
+        # Safe fallback derived from manual DAE inspection.
+        pink = {"Material.001", "Material.002", "Material.003", "Material.004",
+                "F_a30655cccfa642a981ca20a073a43b72"}
+    return pink
 
 
 def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
@@ -104,38 +146,54 @@ def _bake_tinted_usd(drone_idx: int, color: tuple[float, float, float]) -> str:
     target_relpaths: list[str] = []
 
     # Mapping: source mesh root -> wrapper namespace path under /Drone.
-    mapping = {
-        "/visuals/body": "/Drone/body/visuals",
-        "/visuals/prop1": "/Drone/prop1/visuals",
-        "/visuals/prop2": "/Drone/prop2/visuals",
-        "/visuals/prop3": "/Drone/prop3/visuals",
-        "/visuals/prop4": "/Drone/prop4/visuals",
+    body_src, body_dst = "/visuals/body", "/Drone/body/visuals"
+    prop_mapping = {
+        f"/visuals/prop{i}": f"/Drone/prop{i}/visuals" for i in (1, 2, 3, 4)
     }
     # STEP 1: deactivate instancing on the visual roots BEFORE authoring any
     # descendant overrides. Source has instanceable=true on body/visuals + the
     # four prop*/visuals — that makes every Mesh + GeomSubset inside an
     # instance proxy (uneditable). Override the flag first.
-    for dst_prefix in mapping.values():
+    for dst_prefix in [body_dst, *prop_mapping.values()]:
         over = stage.OverridePrim(Sdf.Path(dst_prefix))
         over.SetInstanceable(False)
 
-    # STEP 2: collect every Mesh + GeomSubset path in the wrapper namespace.
-    for src_prefix, dst_prefix in mapping.items():
+    # STEP 2a: props — bind tint on the parent Mesh, covers all prop subsets.
+    for src_prefix, dst_prefix in prop_mapping.items():
         src_prim = src_stage.GetPrimAtPath(src_prefix)
         if not src_prim.IsValid():
             continue
-        target_relpaths.append(dst_prefix)
         for child in Usd.PrimRange(src_prim):
-            src_path = str(child.GetPath())
-            if src_path == src_prefix:
-                continue
-            if not (UsdGeom.Mesh(child) or UsdGeom.Subset(child)):
-                continue
-            rest = src_path[len(src_prefix):]
-            target_relpaths.append(dst_prefix + rest)
+            if UsdGeom.Mesh(child):
+                rest = str(child.GetPath())[len(src_prefix):]
+                target_relpaths.append(dst_prefix + rest)
+                break  # one Mesh per prop is enough
 
-    # STEP 3: bind tinted material at every target path. Now that the parent
-    # visual Xform is not instanceable, OverridePrim on descendants works.
+    # STEP 2b: body — only retint subsets whose ORIGINAL material is the
+    # pink/magenta arm color. Other body subsets (frame, motors, camera mount)
+    # keep their stock material. Pink set is determined by parsing the source
+    # DAE diffuse colors: bright magenta (Blender default "Material.00x" =
+    # (1,0,1)) plus the one red-pink F_a306... arm material.
+    pink_material_names = _collect_pink_material_names()
+    body_prim = src_stage.GetPrimAtPath(body_src)
+    if body_prim.IsValid():
+        for child in Usd.PrimRange(body_prim):
+            if not UsdGeom.Subset(child):
+                continue
+            bapi = UsdShade.MaterialBindingAPI(child)
+            rel = bapi.GetDirectBindingRel()
+            if not rel:
+                continue
+            targets = rel.GetTargets()
+            if not targets:
+                continue
+            mat_name = str(targets[0]).rsplit("/", 1)[-1]
+            if mat_name not in pink_material_names:
+                continue
+            rest = str(child.GetPath())[len(body_src):]
+            target_relpaths.append(body_dst + rest)
+
+    # STEP 3: bind tinted material at every selected target path.
     for tp in target_relpaths:
         over = stage.OverridePrim(Sdf.Path(tp))
         UsdShade.MaterialBindingAPI.Apply(over).Bind(
