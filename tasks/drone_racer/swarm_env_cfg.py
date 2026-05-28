@@ -312,7 +312,7 @@ def _build_rewards(num_drones: int) -> _SwarmRewardsCfg:
                     "asset_cfg": SceneEntityCfg(f"drone_{i}")},
         ))
         setattr(cfg, f"gate_passed_{i}", RewTerm(
-            func=mdp.gate_passed, weight=400.0,
+            func=mdp.gate_passed, weight=1000.0,
             params={"command_name": f"target_{i}", "penalize_miss": False,
                     "asset_cfg": SceneEntityCfg(f"drone_{i}")},
         ))
@@ -321,9 +321,11 @@ def _build_rewards(num_drones: int) -> _SwarmRewardsCfg:
             params={"command_name": f"target_{i}", "std": 0.5,
                     "asset_cfg": SceneEntityCfg(f"drone_{i}")},
         ))
-        # Paper Eq. 4 ranking reward: leader=1, last=1/N.
+        # Paper Eq. 4 ranking reward: leader=1, last=1/N. Weight dropped
+        # 2.0 -> 0.5 — rank was dominating signal, policy farmed survival
+        # without racing (gate_passed dropped 0.024 -> 0.006 between runs).
         setattr(cfg, f"rank_{i}", RewTerm(
-            func=mdp.race_ranking, weight=2.0,
+            func=mdp.race_ranking, weight=0.5,
             params={"drone_idx": i, "num_drones": num_drones},
         ))
         # Paper Eq. 3 velocity-weighted exponential proximity penalty.
