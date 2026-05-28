@@ -103,19 +103,23 @@ def recolor_drones(num_envs: int, num_drones: int) -> None:
             shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
             material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
 
-            # Bind on the drone root with strongerThanDescendants — overrides every
-            # descendant material binding on the body/prop visual meshes.
-            UsdShade.MaterialBindingAPI.Apply(drone_prim).Bind(
-                material, bindingStrength=UsdShade.Tokens.strongerThanDescendants
-            )
+            # The body/visuals subtree references an external USD with its OWN
+            # material binding (the pink default). Bind on:
+            #   (a) drone root           — catches future descendants
+            #   (b) every Imageable prim — Xform/Mesh/Scope inside referenced layers
+            # Clear any existing binding first so the referenced-layer one cannot win.
+            def _force_bind(prim):
+                api = UsdShade.MaterialBindingAPI.Apply(prim)
+                api.UnbindAllBindings()
+                api.Bind(material, bindingStrength=UsdShade.Tokens.strongerThanDescendants)
 
-            # Also override every Mesh descendant explicitly in case the source USD
-            # binds materials at the mesh level (which beats the root's weakerThan).
+            _force_bind(drone_prim)
             for prim in Usd.PrimRange(drone_prim):
-                if UsdGeom.Mesh(prim):
-                    UsdShade.MaterialBindingAPI.Apply(prim).Bind(
-                        material, bindingStrength=UsdShade.Tokens.strongerThanDescendants
-                    )
+                # Skip non-imageable prims (Materials, Shaders, Scopes that hold them).
+                if prim.IsA(UsdShade.Material) or prim.IsA(UsdShade.Shader):
+                    continue
+                if UsdGeom.Imageable(prim):
+                    _force_bind(prim)
             applied += 1
 
     print(f"[recolor_drones] applied={applied} skipped={skipped} drones across {num_envs} envs")
