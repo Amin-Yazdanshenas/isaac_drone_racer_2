@@ -60,7 +60,7 @@ class DroneRacerSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Robot/body",
         history_length=3,
         update_period=0.0,
-        force_threshold=200.0,
+        force_threshold=200.0,  # gates buffer above prop gyro phantom
         debug_vis=False,
     )
     imu = ImuCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
@@ -215,10 +215,13 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
+    # Ground/wall hits (force >500 N). Gate-frame hits use gate_collision below
+    # (geometric, ContactSensor misses them due to phantom forces).
     collision = DoneTerm(
         func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 200.0},
+        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 500.0},
     )
+    gate_collision = DoneTerm(func=mdp.gate_collision, params={"command_name": "target"})
 
 
 @configclass

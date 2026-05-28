@@ -80,6 +80,23 @@ def flyaway(
     return distance_tensor > distance
 
 
+def gate_collision(
+    env: ManagerBasedRLEnv,
+    command_name: str = "target",
+) -> torch.Tensor:
+    """Terminate when the drone crosses the next gate plane outside its bbox
+    (i.e. hits the gate frame).
+
+    Replaces ContactSensor-based gate-hit detection. ContactSensor reads
+    Sim 5.1 phantom forces from prop gyro that swamp real gate-impact forces,
+    so collision thresholds must be set so high (>500 N) that gate frame hits
+    no longer register. Geometric "missed-the-hole" detection in
+    GateTargetingCommand is unaffected by physics-side noise.
+    """
+    cmd = env.command_manager.get_term(command_name)
+    return cmd.gate_missed
+
+
 def drone_drone_collision(
     env: ManagerBasedRLEnv,
     num_drones: int,
