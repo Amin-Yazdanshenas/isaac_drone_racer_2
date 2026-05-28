@@ -60,7 +60,7 @@ class DroneRacerSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Robot/body",
         history_length=3,
         update_period=0.0,
-        force_threshold=200.0,
+        force_threshold=50.0,
         debug_vis=False,
     )
     imu = ImuCfg(prim_path="{ENV_REGEX_NS}/Robot/body", debug_vis=False)
@@ -217,7 +217,7 @@ class TerminationsCfg:
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
     collision = DoneTerm(
         func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 500.0},
+        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 100.0},
     )
 
 
