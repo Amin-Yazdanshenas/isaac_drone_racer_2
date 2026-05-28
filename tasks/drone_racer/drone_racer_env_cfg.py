@@ -217,7 +217,7 @@ class TerminationsCfg:
     flyaway = DoneTerm(func=mdp.flyaway, params={"command_name": "target", "distance": 20.0})
     collision = DoneTerm(
         func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 10.0},
+        params={"sensor_cfg": SceneEntityCfg("collision_sensor"), "threshold": 500.0},
     )
 
 
