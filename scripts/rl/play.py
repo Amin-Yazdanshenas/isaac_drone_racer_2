@@ -300,7 +300,10 @@ def main():
     else:
         runner = Runner(env, experiment_cfg)
 
-    if resume_path:
+    # Skip loading the SWARM runner checkpoint when multi-drone inference is on —
+    # the checkpoint is a single-drone model, shape doesn't match the swarm-shaped
+    # runner. We instantiate a separate single-drone runner below.
+    if resume_path and not args_cli.multi_drone_inference:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")
         runner.agent.load(resume_path)
     # set agent to evaluation mode
