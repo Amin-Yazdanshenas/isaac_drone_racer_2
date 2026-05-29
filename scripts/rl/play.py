@@ -52,6 +52,9 @@ parser.add_argument(
 parser.add_argument("--log", type=int, default=None, help="Log the observations and metrics.")
 parser.add_argument("--randomise_start", action="store_true", default=False,
                     help="Override PLAY config to respawn at a random gate (matches training distribution).")
+parser.add_argument("--multi_drone_inference", action="store_true", default=False,
+                    help="Swarm task only: load a SINGLE-DRONE checkpoint and apply it independently "
+                         "to each drone. No retraining needed. Pure ghost race.")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -307,6 +310,40 @@ def main():
         else:
             model.eval()
 
+    # Multi-drone inference path: load single-drone policy + apply per drone.
+    # Bypasses runner.agent.act in step loop. Drones share weights, ignore each other.
+    multi_drone_policy = None
+    if args_cli.multi_drone_inference:
+        if not hasattr(env_cfg, "num_drones") or env_cfg.num_drones <= 1:
+            raise ValueError("--multi_drone_inference requires a swarm task with num_drones>1")
+        if not resume_path:
+            raise ValueError("--multi_drone_inference requires --checkpoint <single-drone agent.pt>")
+        import gymnasium.spaces as spaces
+        import numpy as np
+        # Build a fake env exposing single-drone obs/action spaces so skrl Runner
+        # can instantiate matching models without spinning up another Isaac scene.
+        class _FakeSingleDroneEnv:
+            num_envs = env_cfg.scene.num_envs
+            device = env_cfg.sim.device
+            observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(20,), dtype=np.float32)
+            action_space = spaces.Box(low=-1.0, high=1.0, shape=(4,), dtype=np.float32)
+            state_space = None
+            possible_agents = None
+        # Load single-drone agent cfg (same MLP shape used during single-drone training).
+        single_cfg = load_cfg_from_registry("Isaac-Drone-Racer-NoCam-CTBR-v0", "skrl_cfg_entry_point")
+        single_cfg["trainer"]["close_environment_at_exit"] = False
+        single_cfg["agent"]["experiment"]["write_interval"] = 0
+        single_cfg["agent"]["experiment"]["checkpoint_interval"] = 0
+        single_runner = Runner(_FakeSingleDroneEnv(), single_cfg)
+        single_runner.agent.load(resume_path)
+        for m in single_runner.agent.models.values():
+            if hasattr(m, "set_running_mode"):
+                m.set_running_mode("eval")
+            else:
+                m.eval()
+        multi_drone_policy = single_runner.agent
+        print(f"[multi_drone_inference] applying single-drone policy to {env_cfg.num_drones} drones")
+
     # reset environment
     obs, _ = env.reset()
     timestep = 0
@@ -317,14 +354,23 @@ def main():
 
         # run everything in inference mode
         with torch.inference_mode():
-            # agent stepping
-            outputs = runner.agent.act(obs, None, timestep=0, timesteps=0)
-            # - multi-agent (deterministic) actions
-            if hasattr(env, "possible_agents"):
-                actions = {a: outputs[-1][a].get("mean_actions", outputs[0][a]) for a in env.possible_agents}
-            # - single-agent (deterministic) actions
+            if multi_drone_policy is not None:
+                # Reshape (N_envs, num_drones * 20) -> (N_envs * num_drones, 20).
+                # Swarm obs layout is per-drone concatenated (drone 0's 20 dims, drone 1's, ...).
+                nd = env_cfg.num_drones
+                obs_per_drone = obs.view(-1, nd, 20).reshape(-1, 20)
+                outputs = multi_drone_policy.act(obs_per_drone, None, timestep=0, timesteps=0)
+                a_per_drone = outputs[-1].get("mean_actions", outputs[0])  # (N*nd, 4)
+                actions = a_per_drone.view(-1, nd, 4).reshape(-1, nd * 4)
             else:
-                actions = outputs[-1].get("mean_actions", outputs[0])
+                # agent stepping
+                outputs = runner.agent.act(obs, None, timestep=0, timesteps=0)
+                # - multi-agent (deterministic) actions
+                if hasattr(env, "possible_agents"):
+                    actions = {a: outputs[-1][a].get("mean_actions", outputs[0][a]) for a in env.possible_agents}
+                # - single-agent (deterministic) actions
+                else:
+                    actions = outputs[-1].get("mean_actions", outputs[0])
             # env stepping
             obs, rew, terminated, truncated, info = env.step(actions)
 
