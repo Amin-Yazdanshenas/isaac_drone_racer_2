@@ -55,6 +55,9 @@ parser.add_argument("--randomise_start", action="store_true", default=False,
 parser.add_argument("--multi_drone_inference", action="store_true", default=False,
                     help="Swarm task only: load a SINGLE-DRONE checkpoint and apply it independently "
                          "to each drone. No retraining needed. Pure ghost race.")
+parser.add_argument("--no_individual_terminations", action="store_true", default=False,
+                    help="Swarm only: disable per-drone terminations (flyaway/collision/gate_collision/d2d). "
+                         "Episode ends only on time_out. Use for clean visual demos.")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -186,6 +189,17 @@ def main():
     if args_cli.num_drones is not None and hasattr(env_cfg, "num_drones"):
         env_cfg.num_drones = args_cli.num_drones
         env_cfg.__post_init__()
+
+    # Swarm visual mode: keep only time_out, drop per-drone terminations.
+    if args_cli.no_individual_terminations:
+        nd = getattr(env_cfg, "num_drones", 0) or 0
+        for prefix in ("flyaway", "collision", "gate_collision"):
+            for i in range(nd):
+                if hasattr(env_cfg.terminations, f"{prefix}_{i}"):
+                    setattr(env_cfg.terminations, f"{prefix}_{i}", None)
+        if hasattr(env_cfg.terminations, "drone_drone_collision"):
+            env_cfg.terminations.drone_drone_collision = None
+        print(f"[play] disabled per-drone terminations across {nd} drones — time_out only")
 
     # Match training spawn distribution (random gate respawn).
     if args_cli.randomise_start:
