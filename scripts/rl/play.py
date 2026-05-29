@@ -50,6 +50,8 @@ parser.add_argument(
     help="Renderer to use. RasterOnly avoids RTX AccelStruct VRAM exhaustion on 6 GB GPUs.",
 )
 parser.add_argument("--log", type=int, default=None, help="Log the observations and metrics.")
+parser.add_argument("--randomise_start", action="store_true", default=False,
+                    help="Override PLAY config to respawn at a random gate (matches training distribution).")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -181,6 +183,17 @@ def main():
     if args_cli.num_drones is not None and hasattr(env_cfg, "num_drones"):
         env_cfg.num_drones = args_cli.num_drones
         env_cfg.__post_init__()
+
+    # Match training spawn distribution (random gate respawn).
+    if args_cli.randomise_start:
+        if hasattr(env_cfg.commands, "target"):
+            env_cfg.commands.target.randomise_start = True
+            print("[play] randomise_start=True applied to single-drone command")
+        for i in range(getattr(env_cfg, "num_drones", 0) or 0):
+            tgt = getattr(env_cfg.commands, f"target_{i}", None)
+            if tgt is not None:
+                tgt.randomise_start = True
+                print(f"[play] randomise_start=True applied to target_{i}")
     try:
         experiment_cfg = load_cfg_from_registry(args_cli.task, f"skrl_{algorithm}_cfg_entry_point")
     except ValueError:
