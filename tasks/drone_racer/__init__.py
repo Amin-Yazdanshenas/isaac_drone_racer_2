@@ -109,6 +109,11 @@ for _swarm_id, _cfg_name, _yaml in [
     ("Isaac-Drone-Racer-Swarm-NoCam-CTBR-Lite-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR_PLAY", "skrl_cfg_swarm_lite.yaml"),
     ("Isaac-Drone-Racer-Swarm-NoCam-Lite-v0", "DroneRacerSwarmEnvCfg_NoCam", "skrl_cfg_swarm_lite.yaml"),
     ("Isaac-Drone-Racer-Swarm-NoCam-Lite-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_PLAY", "skrl_cfg_swarm_lite.yaml"),
+    # Shared-policy variant — single MLP across all drones via SharedSwarmEnvWrapper
+    # (per-drone 20-dim obs / 4-dim action, equivalent to IPPO with shared parameters).
+    # Use with `--shared_policy` flag on train.py / play.py.
+    ("Isaac-Drone-Racer-Swarm-Shared-NoCam-CTBR-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR", "skrl_cfg_swarm_shared.yaml"),
+    ("Isaac-Drone-Racer-Swarm-Shared-NoCam-CTBR-Play-v0", "DroneRacerSwarmEnvCfg_NoCam_CTBR_PLAY", "skrl_cfg_swarm_shared.yaml"),
 ]:
     gym.register(
         id=_swarm_id,

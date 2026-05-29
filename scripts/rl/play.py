@@ -58,6 +58,10 @@ parser.add_argument("--multi_drone_inference", action="store_true", default=Fals
 parser.add_argument("--no_individual_terminations", action="store_true", default=False,
                     help="Swarm only: disable per-drone terminations (flyaway/collision/gate_collision/d2d). "
                          "Episode ends only on time_out. Use for clean visual demos.")
+parser.add_argument("--shared_policy", action="store_true", default=False,
+                    help="Swarm only: wrap env with SharedSwarmEnvWrapper for shared-policy inference "
+                         "(per-drone 20-dim obs, 4-dim action). Use with a checkpoint trained via "
+                         "train.py --shared_policy.")
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
@@ -264,6 +268,14 @@ def main():
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
         env = multi_agent_to_single_agent(env)
+
+    # Shared-policy swarm: wrap so per-drone obs/action are flat.
+    if args_cli.shared_policy:
+        if not (hasattr(env_cfg, "num_drones") and env_cfg.num_drones > 1):
+            raise ValueError("--shared_policy requires a swarm task with num_drones > 1")
+        from tasks.drone_racer.agents.swarm_shared_wrapper import SharedSwarmEnvWrapper
+        env = SharedSwarmEnvWrapper(env, num_drones=env_cfg.num_drones)
+        print(f"[shared_policy] wrapped env: effective num_envs={env.num_envs}")
 
     # get environment (step) dt for real-time evaluation
     try:

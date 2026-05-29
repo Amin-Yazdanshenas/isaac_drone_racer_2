@@ -26,6 +26,9 @@ parser.add_argument(
 )
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint to resume training.")
 parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
+parser.add_argument("--shared_policy", action="store_true", default=False,
+                    help="Swarm only: wrap env with SharedSwarmEnvWrapper so a single MLP is trained "
+                         "across all drones (per-drone shared policy). Uses skrl_cfg_swarm_shared.yaml.")
 parser.add_argument(
     "--ml_framework",
     type=str,
@@ -145,6 +148,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     agent_cfg["seed"] = args_cli.seed if args_cli.seed is not None else agent_cfg["seed"]
     env_cfg.seed = agent_cfg["seed"]
 
+    # Shared-policy swarm logs go to a separate directory so they don't mix with
+    # the regular concat-state swarm runs.
+    if args_cli.shared_policy and hasattr(env_cfg, "num_drones") and env_cfg.num_drones > 1:
+        agent_cfg["agent"]["experiment"]["directory"] = "drone_racer_swarm_shared"
+
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "skrl", agent_cfg["agent"]["experiment"]["directory"])
     log_root_path = os.path.abspath(log_root_path)
@@ -185,6 +193,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv) and algorithm in ["ppo"]:
         env = multi_agent_to_single_agent(env)
+
+    # Shared-policy swarm: wrap so per-drone obs/action become independent
+    # transitions for the PPO agent. Single MLP, shared weights across drones.
+    if args_cli.shared_policy:
+        if not (hasattr(env_cfg, "num_drones") and env_cfg.num_drones > 1):
+            raise ValueError("--shared_policy requires a swarm task with num_drones > 1")
+        from tasks.drone_racer.agents.swarm_shared_wrapper import SharedSwarmEnvWrapper
+        env = SharedSwarmEnvWrapper(env, num_drones=env_cfg.num_drones)
+        print(f"[shared_policy] wrapping env: per-drone shape (obs=20, act=4), "
+              f"effective num_envs={env.num_envs}")
 
     # wrap for video recording
     if args_cli.video:
