@@ -152,6 +152,32 @@ python3 scripts/rl/play.py --task Isaac-Drone-Racer-Swarm-NoCam-CTBR-Play-v0 \
     --num_envs 1 --num_drones 4
 ```
 
+#### Multi-drone visual demo (no swarm training required)
+
+The current shared-MLP swarm policy under-trains because gradient pressure concentrates on one drone slot in the concatenated obs. As a working workaround, you can deploy a single-drone trained policy across N drones in a swarm env — each drone runs the same network on its own ego state (pure ghost race, no opponent awareness). Useful for visual demos, video recording, and validating physics scale-up.
+
+```bash
+# Train a single-drone CTBR policy (works, ~10 min on RTX 4090)
+python3 scripts/rl/train.py --task Isaac-Drone-Racer-NoCam-CTBR-v0 \
+    --headless --num_envs 4096 --max_iterations 1000
+
+# Deploy that checkpoint to 4 drones racing in one swarm env
+python3 scripts/rl/play.py \
+    --task Isaac-Drone-Racer-Swarm-NoCam-CTBR-Play-v0 \
+    --num_envs 1 --num_drones 4 \
+    --multi_drone_inference \
+    --randomise_start \
+    --no_individual_terminations \
+    --checkpoint logs/skrl/drone_racer_nocam_ctbr/<run-dir>/checkpoints/agent_<step>.pt
+```
+
+Flags:
+- `--multi_drone_inference` — load a SINGLE-DRONE checkpoint and apply it independently to each drone. Requires `--num_drones >1` and `--checkpoint` pointing at a `Isaac-Drone-Racer-NoCam-CTBR-v0` model.
+- `--randomise_start` — drones respawn at a random gate each episode (matches training distribution; without this they spawn at the corner = out-of-distribution and crash often).
+- `--no_individual_terminations` — disable per-drone `flyaway` / `collision` / `gate_collision` / `drone_drone_collision` so the episode runs the full `time_out` (~20 s). Crashed drones sit, survivors keep racing. Clean visual demo.
+
+A proper multi-agent shared-policy training path (IPPO with permutation-invariant opponent encoder) is on the roadmap (see "Next steps").
+
 ### RTX 3060 / 6 GB-friendly presets — Swarm Lite
 
 `-Lite-v0` task IDs use `skrl_cfg_swarm_lite.yaml` (smaller MLP, smaller rollout). Required: `--headless`. Recommended: 2 drones, 32–128 envs.
@@ -234,6 +260,9 @@ Isaac Sim 5.1 pre-allocates ~4–5 GB VRAM for the RTX renderer when not headles
 - [ ] Power consumption model — battery discharge tied to motor current
 - [ ] Curriculum learning — staged gate spacing and speed targets
 - [ ] Sim-to-real transfer — domain randomization of motor dynamics, drag, camera noise
+- [x] Single-drone PPO + CTBR baseline reliably races a 7-gate track (laps a full episode after ~10 min on RTX 4090)
+- [x] Multi-drone visual demo via single-drone-policy fan-out (`--multi_drone_inference`)
+- [ ] **Swarm training (IPPO + permutation-invariant opponent encoder)** — replace the concat-state MLP swarm policy with per-drone shared weights and Perceiver-style opponent attention so drones learn avoidance, drafting, and blocking. Reward stack already paper-aligned (Geles et al 2024 — progress, body-rate L1, ranking, velocity-weighted proximity, 10% non-terminal d2d, opponent curriculum).
 
 ---
 
@@ -243,6 +272,7 @@ Isaac Sim 5.1 pre-allocates ~4–5 GB VRAM for the RTX renderer when not headles
 - **Kaufmann, E., Bauersfeld, L., Loquercio, A., Müller, M., Koltun, V., & Scaramuzza, D.** (2023). *Champion-level drone racing using deep reinforcement learning*. [doi.org/10.1038/s41586-023-06419-4](https://doi.org/10.1038/s41586-023-06419-4)
 - **Rudin, N., Hoeller, D., Reist, P., & Hutter, M.** (2022). *Learning to Walk in Minutes Using Massively Parallel Deep Reinforcement Learning*. [arXiv:2109.11978](https://arxiv.org/abs/2109.11978)
 - **Ferede, R., De Wagter, C., Izzo, D., & de Croon, G. C. H. E.** (2024). *End-to-end Reinforcement Learning for Time-Optimal Quadcopter Flight*. [doi.org/10.1109/ICRA57147.2024.10611665](https://doi.org/10.1109/ICRA57147.2024.10611665)
+- **Geles, J., Bauersfeld, L., Wulfmeier, M., & Scaramuzza, D.** (2024). *Superhuman Safe and Agile Racing through Multi-Agent Reinforcement Learning*. Source of the swarm reward stack (progress, body-rate L1, ranking, velocity-weighted proximity, 10% non-terminal d2d collisions, opponent curriculum) and the planned IPPO + Perceiver opponent encoder architecture.
 
 ---
 
