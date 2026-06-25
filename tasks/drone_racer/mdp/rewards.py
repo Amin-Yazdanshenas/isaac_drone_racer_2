@@ -166,6 +166,73 @@ def lookat_next_gate(
     return torch.exp(-angle / std)
 
 
+def gate_visibility(
+    env: ManagerBasedRLEnv,
+    fov_deg: float = 90.0,
+    tilt_deg: float = 0.0,
+    cam_offset: tuple[float, float, float] = (0.14, 0.0, 0.05),
+    command_name: str | None = None,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """FOV-gated gate-visibility reward in [0, 1] (perception-aware shaping).
+
+    Port of Hs293Go/isaac-drone-racing perception.visibility_reward, adapted from
+    NED/FRD to this repo's ENU/FLU torch state. 1 when the target gate sits on the FPV
+    optical axis, ramps linearly to 0 at the FOV edge, 0 once the gate leaves the FOV:
+
+        r = relu(cos_angle - cos(fov/2)) / (1 - cos(fov/2))
+
+    cos_angle is between the camera optical axis and the line-of-sight from the camera
+    to the gate. The optical axis is the body-forward x-axis pitched up by tilt_deg
+    (FLU: [cos t, 0, sin t]); cam_offset is the camera mount in the body frame (defaults
+    to the tiled_camera offset). Use a small positive weight (see perception_aware tuning:
+    ~0.03 relative to a ~0.05-0.1 per-step progress reward).
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    drone_pos = asset.data.root_pos_w
+    drone_quat = asset.data.root_quat_w
+    gate_pos = env.command_manager.get_term(command_name).command[:, :3]
+
+    # camera world position = drone pos + body-frame mount offset rotated to world
+    offset_b = torch.tensor(cam_offset, device=asset.device).expand(env.num_envs, 3)
+    cam_pos = drone_pos + math_utils.quat_apply(drone_quat, offset_b)
+
+    los = math_utils.normalize(gate_pos - cam_pos)
+
+    t = torch.deg2rad(torch.tensor(tilt_deg, device=asset.device))
+    axis_b = torch.stack([torch.cos(t), torch.zeros_like(t), torch.sin(t)]).expand(env.num_envs, 3)
+    optical_axis_w = math_utils.quat_apply(drone_quat, axis_b)
+
+    cos_angle = (optical_axis_w * los).sum(dim=1).clamp(-1.0, 1.0)
+    cos_half = torch.cos(torch.deg2rad(torch.tensor(fov_deg, device=asset.device)) / 2.0)
+    return torch.clamp(cos_angle - cos_half, min=0.0) / (1.0 - cos_half).clamp(min=1e-9)
+
+
+def backpedal(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Tail-first penalty in [0, 1] (perception-aware shaping). USE NEGATIVE WEIGHT.
+
+    Port of Hs293Go/isaac-drone-racing perception.backpedal. 0 when the body nose leads
+    the velocity (flying forward), up to 1 when fully tail-first:
+
+        penalty = relu(-cos(velocity, nose))
+
+    nose = body x-axis in world (FLU forward), velocity = world linear velocity. Returns
+    a positive penalty; set a negative cfg weight (their tuning: ~0.01; 0.02+ crashes
+    tight crossings).
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    vel = asset.data.root_lin_vel_w
+    x_axis = torch.tensor([1.0, 0.0, 0.0], device=asset.device).expand(env.num_envs, 3)
+    nose = math_utils.normalize(math_utils.quat_apply(asset.data.root_quat_w, x_axis))
+
+    speed = torch.norm(vel, dim=1)
+    cos = (vel * nose).sum(dim=1) / speed.clamp(min=1e-9)
+    return torch.clamp(-cos, min=0.0)
+
+
 def ang_vel_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize base angular velocity using L2 squared kernel."""
     # extract the used quantities (to enable type-hinting)

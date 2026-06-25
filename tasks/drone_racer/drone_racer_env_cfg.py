@@ -207,6 +207,16 @@ class RewardsCfg:
         params={"command_name": "target", "penalize_miss": True},
     )
     lookat_next = RewTerm(func=mdp.lookat_next_gate, weight=0.1, params={"command_name": "target", "std": 0.5})
+    # Perception-aware shaping (ported from Hs293Go/isaac-drone-racing). gate_visibility
+    # is a FOV-aware superset of lookat_next; backpedal kills tail-first flight (NEGATIVE
+    # weight). Their batched-scale tuning was perception:backpedal ≈ 0.03:0.01; rescaled
+    # here to lookat_next's [0,1] scale. Sweep these — start conservative.
+    gate_visibility = RewTerm(
+        func=mdp.gate_visibility,
+        weight=0.1,
+        params={"command_name": "target", "fov_deg": 90.0, "tilt_deg": 0.0},
+    )
+    backpedal = RewTerm(func=mdp.backpedal, weight=-0.03)
 
 
 @configclass
